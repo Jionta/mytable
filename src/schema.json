@@ -8,7 +8,8 @@
       "channels": "text",
       "target": "text",
       "pillars": "text",
-      "goal": "text"
+      "goal": "text",
+      "website": "url"
     },
     "clients": {
       "name": "text",
@@ -17,7 +18,16 @@
       "email": "text",
       "fee": "money",
       "status": "enum:Active,Onboarding,Paused",
-      "notes": "text"
+      "notes": "text",
+      "phone": "text",
+      "website": "url",
+      "facebook": "url",
+      "instagram": "url",
+      "brand_assets": "url",
+      "brand_voice": "text",
+      "audience": "text",
+      "services": "text",
+      "onboarding": "text"
     },
     "projects": {
       "title": "text",
@@ -36,7 +46,13 @@
       "status": "enum:Idea,Draft,In review,Changes requested,Approved,Scheduled,Published,Rejected",
       "date": "date",
       "copy": "text",
-      "notes": "text"
+      "notes": "text",
+      "retainer_id": "ref:retainers?",
+      "delivery_kind": "enum:Other,Graphic,Regular reel,Premium video,Story,Article",
+      "asset_url": "url",
+      "owner": "text",
+      "article_id": "ref:articles?",
+      "production_id": "ref:productions?"
     },
     "leads": {
       "name": "text",
@@ -46,7 +62,18 @@
       "value": "money",
       "stage": "enum:Lead,Qualified,Contacted,Meeting,Proposal,Negotiation,Won,Lost",
       "next_date": "date",
-      "notes": "text"
+      "notes": "text",
+      "website": "url",
+      "phone": "text",
+      "country": "text",
+      "role": "text",
+      "source": "text",
+      "source_url": "url",
+      "product_interest": "text",
+      "verified": "bool",
+      "score": "int",
+      "owner": "text",
+      "next_action": "text"
     },
     "transactions": {
       "title": "text",
@@ -66,7 +93,9 @@
       "paid": "money",
       "date": "date",
       "due": "date",
-      "notes": "text"
+      "notes": "text",
+      "retainer_id": "ref:retainers?",
+      "order_id": "ref:orders?"
     },
     "resources": {
       "name": "text",
@@ -101,13 +130,26 @@
     },
     "tasks": {
       "title": "text",
-      "business_id": "ref:businesses",
+      "business_id": "ref:businesses?",
       "client_id": "ref:clients?",
       "status": "enum:Open,In progress,Blocked,Done",
       "due": "date",
       "priority": "enum:High,Medium,Low",
       "external_id": "text",
-      "url": "url"
+      "url": "url",
+      "project_id": "ref:projects?",
+      "content_id": "ref:content?",
+      "retainer_id": "ref:retainers?",
+      "lead_id": "ref:leads?",
+      "order_id": "ref:orders?",
+      "owner": "text",
+      "category": "enum:Other,Strategy,Production,Client work,Lead research,Fulfillment,Website,Personal",
+      "notes": "text",
+      "origin": "enum:GROW,Imported",
+      "recurrence": "enum:None,Daily,Weekly,Monthly",
+      "completed_at": "text",
+      "production_id": "ref:productions?",
+      "repeat_of": "text"
     },
     "recipes": {
       "title": "text",
@@ -116,6 +158,210 @@
       "steps": "text",
       "output": "text",
       "enabled": "bool"
+    },
+    "retainers": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients",
+      "month": "month",
+      "package": "enum:Custom,Build,Scale,Partner",
+      "status": "enum:Draft,Active,Paused,Completed",
+      "fee": "money",
+      "graphics": "int",
+      "reels": "int",
+      "premium": "int",
+      "ads_budget": "money",
+      "renewal": "date",
+      "objective": "text",
+      "notes": "text"
+    },
+    "campaigns": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients",
+      "retainer_id": "ref:retainers?",
+      "channel": "enum:Meta,Google,YouTube,TikTok,Other",
+      "status": "enum:Draft,Running,Paused,Completed",
+      "objective": "text",
+      "start_date": "date",
+      "end_date": "date",
+      "budget": "money",
+      "spent": "money",
+      "impressions": "int",
+      "clicks": "int",
+      "inquiries": "int",
+      "notes": "text"
+    },
+    "client_reports": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients",
+      "retainer_id": "ref:retainers?",
+      "month": "month",
+      "status": "enum:Draft,Ready,Shared",
+      "reach": "int",
+      "engagement": "int",
+      "inquiries": "int",
+      "spend": "money",
+      "wins": "text",
+      "blockers": "text",
+      "next_steps": "text",
+      "url": "url"
+    },
+    "designs": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "status": "enum:Idea,Designing,Review,Approved,Print-ready,Archived",
+      "partner": "text",
+      "asset_url": "url",
+      "mockup_url": "url",
+      "print_url": "url",
+      "due": "date",
+      "notes": "text"
+    },
+    "products": {
+      "name": "text",
+      "business_id": "ref:businesses",
+      "design_id": "ref:designs?",
+      "sku": "text",
+      "size": "enum:M,XS,S,L,XL,XXL,XXXL,One size",
+      "color": "text",
+      "status": "enum:Draft,Active,Archived",
+      "cost": "money",
+      "price": "money",
+      "image_url": "url",
+      "notes": "text"
+    },
+    "batches": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "product_id": "ref:products",
+      "quantity": "int",
+      "status": "enum:Planned,Printing,Quality check,Ready,Cancelled",
+      "supplier": "text",
+      "cost": "money",
+      "due": "date",
+      "notes": "text"
+    },
+    "orders": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "buyer": "text",
+      "phone": "text",
+      "email": "text",
+      "address": "text",
+      "channel": "enum:Website,Facebook,Instagram,WhatsApp,Messenger,Other",
+      "status": "enum:New,Confirmed,Printing,Packed,Shipped,Delivered,Returned,Cancelled",
+      "date": "date",
+      "due": "date",
+      "shipping": "money",
+      "discount": "money",
+      "tracking_url": "url",
+      "notes": "text",
+      "invoice_id": "ref:invoices?"
+    },
+    "order_items": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "order_id": "ref:orders",
+      "product_id": "ref:products",
+      "quantity": "int",
+      "unit_price": "money"
+    },
+    "website_work": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "url": "url",
+      "kind": "enum:Product update,Maintenance,SEO,Content,Bug,Other",
+      "status": "enum:Planned,In progress,Review,Done",
+      "due": "date",
+      "notes": "text"
+    },
+    "lead_activities": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "lead_id": "ref:leads",
+      "date": "date",
+      "type": "enum:Research,Call,Email draft,Contacted,Meeting,Follow-up,Note",
+      "outcome": "text",
+      "next_date": "date"
+    },
+    "task_steps": {
+      "title": "text",
+      "business_id": "ref:businesses?",
+      "task_id": "ref:tasks",
+      "completed": "bool"
+    },
+    "productions": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "project_id": "ref:projects?",
+      "video_type": "enum:Social ad,UGC ad,Product demo,Brand story,Cinematic B-roll,Music video,Other",
+      "status": "enum:Brief,Direction,Production,Review,Revision,Delivered,Archived",
+      "goal": "text",
+      "audience": "text",
+      "brief": "text",
+      "script": "text",
+      "formats": "text",
+      "rights": "text",
+      "direction_approved": "bool",
+      "storyboard_url": "url",
+      "assets_url": "url",
+      "review_url": "url",
+      "final_url": "url",
+      "due": "date",
+      "notes": "text"
+    },
+    "articles": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "category": "text",
+      "status": "enum:Idea,Research,Draft,Review,Ready,Published",
+      "source_url": "url",
+      "source_verified": "bool",
+      "summary": "text",
+      "body": "text",
+      "keyword": "text",
+      "due": "date",
+      "published_url": "url",
+      "notes": "text"
+    },
+    "travel_partners": {
+      "name": "text",
+      "business_id": "ref:businesses",
+      "type": "enum:Agency,Guide",
+      "status": "enum:New,Verified,Active,Paused",
+      "phone": "text",
+      "website": "url",
+      "location": "text",
+      "notes": "text"
+    },
+    "trips": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "partner_id": "ref:travel_partners",
+      "destination": "text",
+      "start_date": "date",
+      "end_date": "date",
+      "price": "money",
+      "seats": "int",
+      "status": "enum:Draft,Listed,Full,Closed",
+      "url": "url",
+      "itinerary": "text",
+      "notes": "text"
+    },
+    "bookings": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "trip_id": "ref:trips",
+      "contact": "text",
+      "phone": "text",
+      "quantity": "int",
+      "status": "enum:Inquiry,Contacted,Requested,Confirmed,Cancelled",
+      "date": "date",
+      "next_date": "date",
+      "notes": "text"
     }
   },
   "required": {
@@ -170,14 +416,116 @@
     ],
     "tasks": [
       "title",
-      "business_id",
-      "status",
-      "external_id"
+      "status"
     ],
     "recipes": [
       "title",
       "trigger",
       "steps"
+    ],
+    "retainers": [
+      "title",
+      "business_id",
+      "client_id",
+      "month",
+      "status"
+    ],
+    "campaigns": [
+      "title",
+      "business_id",
+      "client_id",
+      "status"
+    ],
+    "client_reports": [
+      "title",
+      "business_id",
+      "client_id",
+      "month"
+    ],
+    "designs": [
+      "title",
+      "business_id",
+      "status"
+    ],
+    "products": [
+      "name",
+      "business_id",
+      "sku",
+      "size",
+      "status"
+    ],
+    "batches": [
+      "title",
+      "business_id",
+      "product_id",
+      "quantity",
+      "status"
+    ],
+    "orders": [
+      "title",
+      "business_id",
+      "buyer",
+      "phone",
+      "status",
+      "date"
+    ],
+    "order_items": [
+      "title",
+      "business_id",
+      "order_id",
+      "product_id",
+      "quantity"
+    ],
+    "website_work": [
+      "title",
+      "business_id",
+      "status"
+    ],
+    "lead_activities": [
+      "title",
+      "business_id",
+      "lead_id",
+      "date",
+      "type"
+    ],
+    "task_steps": [
+      "title",
+      "task_id"
+    ],
+    "productions": [
+      "title",
+      "business_id",
+      "status"
+    ],
+    "articles": [
+      "title",
+      "business_id",
+      "status"
+    ],
+    "travel_partners": [
+      "name",
+      "business_id",
+      "type",
+      "status"
+    ],
+    "trips": [
+      "title",
+      "business_id",
+      "partner_id",
+      "destination",
+      "start_date",
+      "end_date",
+      "status"
+    ],
+    "bookings": [
+      "title",
+      "business_id",
+      "trip_id",
+      "contact",
+      "phone",
+      "quantity",
+      "status",
+      "date"
     ]
   },
   "transitions": {

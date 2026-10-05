@@ -2,6 +2,8 @@
 
 Growth · Revenue · Operations · Workflows
 
+This retained version 1 local edition has its original interface. The expanded personal business operations and native tasks are in the Cloud Edition. Version 2 cloud backups are not supported by this version 1 local server.
+
 A working local business operating system for Jubayer. The interface is entirely in English. It runs in your browser and saves records to a SQLite database on your computer. No npm installation, paid service, account, or API key is needed. Python 3.10 or newer is required.
 
 ## Start on Windows
@@ -110,11 +112,11 @@ Optional browser tools register only when the browser supports `document.modelCo
 
 - `server.py`: local HTTP API, validation, SQLite transactions, backup/restore and static serving.
 - `seed.py`: editable starting business profiles and removable sample records.
-- `dist/`: HTML, CSS, JavaScript and favicon. No external fonts, scripts or CDN are used.
+- `legacy-dist/`: HTML, CSS, JavaScript and favicon. No external fonts, scripts or CDN are used.
 - `data/`: created on first launch; excluded from the distributed ZIP.
 - `tests/test_local.py`: meaningful storage and HTTP workflow checks in a temporary database.
 - `tests/render_check.cjs`: browser-independent rendering checks for every module and scoped view.
 
-Run the API tests with `python3 -m unittest discover -s tests -p 'test_*.py'`. Frontend syntax can be checked with `node --check dist/app.js`. Node is only needed for development checks, not for running GROW.
+Run the API tests with `python3 -m unittest discover -s tests -p 'test_*.py'`. Frontend syntax can be checked with `node --check legacy-dist/app.js`. Node is only needed for development checks, not for running GROW.
 
 The Python local server is a deliberate local-first choice. Public hosting would require a server/storage adaptation and authentication; the local API cannot be deployed as a static site.

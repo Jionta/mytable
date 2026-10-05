@@ -1,12 +1,12 @@
 {
   "name": "grow-os-cloud",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "check": "node --check src/index.js && node --check src/workspace.js && node --check dist/app.js && node --check dist/login.js",
+    "check": "node --check src/index.js && node --check src/workspace.js && node --check src/operations.js && node --check dist/app.js && node --check dist/operations.js && node --check dist/login.js",
     "test": "vitest run",
     "test:local": "python3 -m unittest discover -s tests -p \"test_*.py\""
   },

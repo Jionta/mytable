@@ -1,6 +1,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import schema from './schema.json';
 import seedTemplate from './seed-template.json';
+import { newEntities, migratePersonalOS, validateOperations, deleteOperations, afterSave, operationsMutation, orderTotal, stock } from './operations.js';
 
 const { fields: FIELDS, required: REQUIRED, transitions: TRANSITIONS } = schema;
 const entities = Object.keys(FIELDS);
@@ -13,6 +14,9 @@ export class GrowWorkspace extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
     this.sql = ctx.storage.sql;
+    this.fields = FIELDS;
+    this.ValidationError = ValidationError;
+    this.today = today;
     ctx.storage.transactionSync(() => {
       this.sql.exec(`
         CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
@@ -26,7 +30,7 @@ export class GrowWorkspace extends DurableObject {
       if (!this.sql.exec("SELECT value FROM meta WHERE key='version'").toArray().length) {
         const dayShift = Date.parse(today()) - Date.parse('2026-10-05');
         for (const entity of entities) {
-          for (const raw of seedTemplate[entity]) {
+          for (const raw of seedTemplate[entity] || []) {
             const item = { ...raw };
             for (const [key, type] of Object.entries(FIELDS[entity])) {
               if (type === 'date' && item[key]) item[key] = new Date(Date.parse(item[key]) + dayShift).toISOString().slice(0, 10);
@@ -40,6 +44,7 @@ export class GrowWorkspace extends DurableObject {
         this.saveSettings({ task_manager_url: '', owner: 'Jubayer', review_days: 'Sunday and Thursday', workspace_name: 'GROW', currency: 'BDT' });
         this.sql.exec("INSERT INTO meta(key,value) VALUES('version','1')");
       }
+      migratePersonalOS(this);
     });
   }
 
@@ -64,12 +69,12 @@ export class GrowWorkspace extends DurableObject {
     for (const [key, type] of Object.entries(FIELDS[entity])) {
       let value = Object.hasOwn(data, key) ? data[key] : old?.[key];
       if (value === undefined || value === null) {
-        value = type === 'bool' ? false : type === 'money' ? 0 : type.startsWith('enum:') && !REQUIRED[entity].includes(key) ? (entity === 'tasks' && key === 'priority' ? 'Medium' : type.slice(5).split(',')[0]) : '';
+        value = type === 'bool' ? false : ['money','int'].includes(type) ? 0 : type.startsWith('enum:') && !REQUIRED[entity].includes(key) ? (entity === 'tasks' && key === 'priority' ? 'Medium' : type.slice(5).split(',')[0]) : '';
       }
       if (type === 'bool') {
         if (typeof value !== 'boolean') throw new ValidationError(key + ' must be true or false.');
-      } else if (type === 'money') {
-        if (!Number.isSafeInteger(value) || value < 0 || value > 10 ** 14) throw new ValidationError(key + ' must be a nonnegative amount in paisa.');
+      } else if (['money','int'].includes(type)) {
+        if (!Number.isSafeInteger(value) || value < 0 || value > (type==='money'?10**14:10**9)) throw new ValidationError(key + (type==='money'?' must be a nonnegative amount in paisa.':' must be a nonnegative whole number.'));
       } else {
         if (typeof value !== 'string' || value.length > 20000) throw new ValidationError(key + ' is invalid or too long.');
         value = value.trim();
@@ -78,6 +83,7 @@ export class GrowWorkspace extends DurableObject {
           const parsed = Date.parse(value + 'T00:00:00Z');
           if (!/^\d{4}-\d{2}-\d{2}$/.test(value) || !Number.isFinite(parsed) || new Date(parsed).toISOString().slice(0, 10) !== value) throw new ValidationError('Enter a valid YYYY-MM-DD date for ' + key + '.');
         }
+        if (type === 'month' && value && !/^[1-9]\d{3}-(0[1-9]|1[0-2])$/.test(value)) throw new ValidationError('Use YYYY-MM for '+key+'.');
         if (type === 'url' && value) {
           let url;
           try { url = new URL(value); } catch { throw new ValidationError('Use an http or https URL without credentials.'); }
@@ -103,6 +109,7 @@ export class GrowWorkspace extends DurableObject {
       if (old && ['Approved', 'Scheduled', 'Published'].includes(old.status) && ['title', 'copy', 'channel', 'format', 'business_id', 'client_id'].some(key => out[key] !== old[key])) throw new ValidationError('Return approved content to Draft before changing its content.');
       if (['Scheduled', 'Published'].includes(out.status) && !out.date) throw new ValidationError('Choose a planned publish date first.');
     }
+    validateOperations(this,entity,out,old,restoring);
     Object.assign(out, { id: old?.id || crypto.randomUUID(), created_at: old?.created_at || now(), updated_at: now(), demo: old?.demo === true });
     if (old?.invoice_id) out.invoice_id = old.invoice_id;
     return out;
@@ -134,18 +141,20 @@ export class GrowWorkspace extends DurableObject {
     return data;
   }
   restore(payload) {
-    if (!isObject(payload) || payload.grow_version !== 1 || !isObject(payload.data)) throw new ValidationError('Choose a GROW version 1 JSON backup.');
+    if (!isObject(payload) || ![1,2].includes(payload.grow_version) || !isObject(payload.data)) throw new ValidationError('Choose a GROW version 1 or 2 JSON backup.');
+    if (payload.grow_version===1 && newEntities.some(entity=>this.rows(entity).length)) throw new ValidationError('A version 1 backup cannot replace an expanded workspace. Export a version 2 backup first and restore a complete backup.');
     const staged = {}, indexes = {};
     let total = 0;
     for (const entity of entities) {
-      const items = payload.data[entity];
+      const items = payload.data[entity] ?? (payload.grow_version===1 && newEntities.includes(entity) ? [] : undefined);
       if (!Array.isArray(items)) throw new ValidationError('Backup is missing ' + entity + '.');
       total += items.length;
       if (total > 10000) throw new ValidationError('Backup exceeds 10,000 records.');
       staged[entity] = []; indexes[entity] = new Map();
       for (const item of items) {
         if (!isObject(item) || typeof item.id !== 'string' || !item.id || item.id.length > 200 || indexes[entity].has(item.id)) throw new ValidationError('Invalid or duplicate record id.');
-        const record = this.validate(entity, item, null, true);
+        const input = entity==='tasks' && !item.origin ? {...item,origin:item.external_id?'Imported':'GROW'} : item;
+        const record = this.validate(entity, input, null, true);
         Object.assign(record, { id: item.id, demo: item.demo === true });
         for (const key of ['created_at', 'updated_at']) if (typeof item[key] === 'string' && item[key].length < 100 && Number.isFinite(Date.parse(item[key]))) record[key] = item[key];
         if (entity === 'transactions' && item.invoice_id) {
@@ -159,7 +168,13 @@ export class GrowWorkspace extends DurableObject {
     for (const entity of entities) for (const item of staged[entity]) {
       for (const [key, type] of Object.entries(FIELDS[entity])) if (type.startsWith('ref:') && item[key] && !indexes[type.slice(4).replace(/\?$/, '')].has(item[key])) throw new ValidationError('Backup contains a missing reference.');
       if (item.client_id && indexes.clients.get(item.client_id).business_id !== item.business_id) throw new ValidationError('Backup contains mismatched clients.');
-      if (item.invoice_id) {
+      for (const [key,type] of Object.entries(FIELDS[entity])) {
+        if (!type.startsWith('ref:') || !item[key] || ['business_id','client_id'].includes(key)) continue;
+        const linked=indexes[type.slice(4).replace(/\?$/,'')].get(item[key]);
+        if (linked && 'business_id' in linked && linked.business_id!==item.business_id) throw new ValidationError('Backup contains a cross-business reference.');
+        if (linked?.client_id && item.client_id && linked.client_id!==item.client_id) throw new ValidationError('Backup contains a cross-client reference.');
+      }
+      if (entity==='transactions' && item.invoice_id) {
         const invoice = indexes.invoices.get(item.invoice_id);
         if (!invoice) throw new ValidationError('Backup contains a missing invoice.');
         if (item.kind !== 'Income' || item.business_id !== invoice.business_id || item.client_id !== invoice.client_id) throw new ValidationError('Backup invoice payment belongs to the wrong business or client.');
@@ -167,6 +182,16 @@ export class GrowWorkspace extends DurableObject {
       }
     }
     for (const invoice of staged.invoices) if ((payments.get(invoice.id) || 0) !== invoice.paid) throw new ValidationError('Backup invoice payments do not match the ledger.');
+    const stagedDB={rows:entity=>staged[entity]};
+    for (const product of staged.products) if (stock(stagedDB,product.id)<0) throw new ValidationError('Backup allocates more stock than received production.');
+    for (const order of staged.orders) if (order.invoice_id) {
+      const invoice=indexes.invoices.get(order.invoice_id);
+      if (!invoice || invoice.order_id!==order.id || invoice.amount!==orderTotal(stagedDB,order)) throw new ValidationError('Backup order pricing does not match its invoice.');
+    }
+    for (const invoice of staged.invoices) if (invoice.order_id && indexes.orders.get(invoice.order_id)?.invoice_id!==invoice.id) throw new ValidationError('Backup order invoice link is inconsistent.');
+    const skuKeys=new Set(),retainerInvoices=new Set();
+    for(const product of staged.products){const key=product.business_id+'|'+product.sku.toLowerCase();if(skuKeys.has(key))throw new ValidationError('Backup contains duplicate product SKUs.');skuKeys.add(key);}
+    for(const invoice of staged.invoices)if(invoice.retainer_id){if(retainerInvoices.has(invoice.retainer_id))throw new ValidationError('Backup contains duplicate monthly plan invoices.');retainerInvoices.add(invoice.retainer_id);}
     const settings = this.validateSettings(payload.data.settings || {});
     this.sql.exec('DELETE FROM records');
     for (const entity of entities) for (const item of staged[entity]) this.put(entity, item);
@@ -186,6 +211,8 @@ export class GrowWorkspace extends DurableObject {
   mutateSync(method, path, data) {
     if (!isObject(data)) throw new ValidationError('Expected an object.');
     const parts = path.split('/').filter(Boolean);
+    const operation=operationsMutation(this,method,path,data);
+    if(operation!==null)return operation;
     if (path === '/api/restore' && method === 'POST') { this.restore(data); return {}; }
     if (path === '/api/settings' && method === 'PATCH') { this.saveSettings(this.validateSettings(data)); this.audit('Updated', 'settings', ''); return {}; }
     if (path === '/api/clear-samples' && method === 'POST') {
@@ -193,7 +220,7 @@ export class GrowWorkspace extends DurableObject {
       for (const entity of entities) for (const record of this.rows(entity)) {
         if (record.demo) { this.sql.exec('DELETE FROM records WHERE entity=? AND id=?', entity, record.id); continue; }
         for (const [key, type] of Object.entries(FIELDS[entity])) if (type.startsWith('ref:') && demoIds.has(record[key])) {
-          if (key === 'business_id' && !type.endsWith('?')) throw new ValidationError('Move your records out of sample businesses before clearing samples.');
+          if (REQUIRED[entity].includes(key)) throw new ValidationError('A real record requires a sample reference. Reassign its linked records before clearing samples.');
           record[key] = '';
         }
         if (demoIds.has(record.invoice_id)) throw new ValidationError('Back up first: a real payment references a sample invoice.');
@@ -205,7 +232,12 @@ export class GrowWorkspace extends DurableObject {
       if (!Array.isArray(data.tasks) || data.tasks.length > 1000) throw new ValidationError('Choose JSON with a tasks array (maximum 1,000 items).');
       const seen = new Set(), existing = new Map(this.rows('tasks').map(record => [record.external_id, record]));
       for (const raw of data.tasks) {
-        const record = this.validate('tasks', raw);
+        if(!isObject(raw)||typeof raw.external_id!=='string'||!raw.external_id.trim())throw new ValidationError('Imported tasks require external_id.');
+        const allowed=['external_id','title','business_id','client_id','status','priority','due','url','notes'];
+        const input=Object.fromEntries(allowed.filter(key=>Object.hasOwn(raw,key)).map(key=>[key,raw[key]]));
+        const record = this.validate('tasks', {...input,origin:'Imported'},null,true);
+        if(record.business_id)this.one('businesses',record.business_id);
+        if(record.client_id&&this.one('clients',record.client_id).business_id!==record.business_id)throw new ValidationError('This client belongs to another business.');
         if (seen.has(record.external_id)) throw new ValidationError('Duplicate external_id in task import.');
         seen.add(record.external_id);
         const old = existing.get(record.external_id);
@@ -225,17 +257,25 @@ export class GrowWorkspace extends DurableObject {
     }
     const entity = parts[1];
     if (parts[0] !== 'api' || ![2, 3].includes(parts.length) || !Object.hasOwn(FIELDS, entity)) throw new ValidationError('Endpoint not found.');
-    if (entity === 'tasks') throw new ValidationError('Tasks are read-only snapshots. Update them in your task manager, then import again.');
     const old = parts.length === 3 ? this.one(entity, parts[2]) : null;
+    if(entity==='tasks' && old?.origin==='Imported')throw new ValidationError('Imported tasks are read-only snapshots. Create a GROW task to manage it here.');
     if (method === 'DELETE' && old) {
-      if (old.invoice_id) throw new ValidationError('An invoice payment cannot be deleted from the ledger.');
+      if (entity==='transactions' && old.invoice_id) throw new ValidationError('An invoice payment cannot be deleted from the ledger.');
+      deleteOperations(this,entity,old);
       if (entity === 'invoices' && old.paid > 0) throw new ValidationError('Paid invoices are retained to protect the ledger.');
       for (const type of entities) for (const record of this.rows(type)) if (Object.entries(FIELDS[type]).some(([key, fieldtype]) => fieldtype.startsWith('ref:') && fieldtype.slice(4).replace(/\?$/, '') === entity && record[key] === old.id)) throw new ValidationError('This record is in use. Remove or reassign its linked records first.');
       this.sql.exec('DELETE FROM records WHERE entity=? AND id=?', entity, old.id); this.audit('Deleted', entity, old.id, old.title || old.name); return {};
     }
     if ((method === 'POST' && !old) || (method === 'PATCH' && old)) {
-      if (old?.invoice_id) throw new ValidationError('Invoice payments cannot be edited separately from their invoice.');
-      const record = this.validate(entity, data, old); this.put(entity, record); this.audit(old ? 'Updated' : 'Created', entity, record.id, record.title || record.name); return record;
+      if (entity==='transactions' && old?.invoice_id) throw new ValidationError('Invoice payments cannot be edited separately from their invoice.');
+      const record = this.validate(entity, data, old);
+      if(old)for(const type of entities)for(const linked of this.rows(type))for(const [key,fieldtype]of Object.entries(FIELDS[type])){
+        if(!fieldtype.startsWith('ref:')||fieldtype.slice(4).replace(/\?$/,'')!==entity||linked[key]!==old.id)continue;
+        if(entity==='clients'&&linked.business_id!==record.business_id)throw new ValidationError('Reassign this client’s linked work before changing its business.');
+        if(entity!=='businesses'&&entity!=='clients'&&'business_id'in record&&linked.business_id!==record.business_id)throw new ValidationError('Reassign linked work before moving this record to another business.');
+        if(record.client_id&&linked.client_id&&record.client_id!==linked.client_id)throw new ValidationError('Reassign linked client work before changing this record’s client.');
+      }
+      this.put(entity, record); afterSave(this,entity,record,old); this.audit(old ? 'Updated' : 'Created', entity, record.id, record.title || record.name); return record;
     }
     throw new ValidationError('Invalid record operation.');
   }

@@ -240,8 +240,8 @@ class Handler(BaseHTTPRequestHandler):
                 return self.respond(200,{'grow_version':VERSION,'exported_at':now(),'data':data},download='grow-backup-'+today().isoformat()+'.json')
             if path=='/api/health': return self.respond(200,{'ok':True,'version':VERSION})
             if path.startswith('/api/'): return self.respond(404,{'error':'Endpoint not found.'})
-            target=(ROOT/'dist'/unquote(path).lstrip('/')).resolve() if path!='/' else ROOT/'dist'/'index.html'
-            if not target.is_relative_to(ROOT/'dist') or not target.is_file(): return self.respond(404,{'error':'File not found.'})
+            target=(ROOT/'legacy-dist'/unquote(path).lstrip('/')).resolve() if path!='/' else ROOT/'legacy-dist'/'index.html'
+            if not target.is_relative_to(ROOT/'legacy-dist') or not target.is_file(): return self.respond(404,{'error':'File not found.'})
             ctypes={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.svg':'image/svg+xml'}
             return self.respond(200,target.read_bytes(),ctypes.get(target.suffix,'application/octet-stream'))
         except (OSError,sqlite3.Error): return self.respond(500,{'error':'Cannot read local data. Check the data folder and available disk space.'})

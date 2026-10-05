@@ -91,9 +91,9 @@ export default {
       }
       if (path.startsWith('/api/')) {
         if (request.method === 'GET') {
-          if (path === '/api/health') return json({ ok: true, version: 1, deployment: 'cloud' });
-          if (path === '/api/state') return json({ data: await workspace.snapshot(), csrf: session.csrf, version: 1, today: today(), deployment: 'cloud' });
-          if (path === '/api/backup') return json({ grow_version: 1, exported_at: new Date().toISOString(), data: await workspace.snapshot() }, 200, { 'Content-Disposition': `attachment; filename="grow-backup-${today()}.json"` });
+          if (path === '/api/health') return json({ ok: true, version: 2, deployment: 'cloud' });
+          if (path === '/api/state') return json({ data: await workspace.snapshot(), csrf: session.csrf, version: 2, today: today(), deployment: 'cloud' });
+          if (path === '/api/backup') return json({ grow_version: 2, exported_at: new Date().toISOString(), data: await workspace.snapshot() }, 200, { 'Content-Disposition': `attachment; filename="grow-backup-${today()}.json"` });
           return json({ error: 'Endpoint not found.' }, 404);
         }
         if (!['POST', 'PATCH', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405);
