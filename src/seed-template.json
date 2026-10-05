@@ -1,0 +1,469 @@
+{
+  "businesses": [
+    {
+      "id": "artbit",
+      "name": "Artbit Studio",
+      "kind": "Agency",
+      "focus": "Primary revenue engine",
+      "color": "#7685ff",
+      "channels": "Facebook, Instagram, LinkedIn",
+      "target": "Businesses that need creative marketing",
+      "pillars": "Branding, Campaigns, Client results",
+      "goal": "Protect daily strategy time"
+    },
+    {
+      "id": "vidzones",
+      "name": "Vidzones",
+      "kind": "Video agency",
+      "focus": "Revenue growth",
+      "color": "#00b6a5",
+      "channels": "Instagram, LinkedIn, YouTube Shorts",
+      "target": "Agencies, brands, startups",
+      "pillars": "AI video, Case studies, Before/after",
+      "goal": "4 social posts per week"
+    },
+    {
+      "id": "qfs",
+      "name": "QFS",
+      "kind": "Sourcing business",
+      "focus": "Revenue growth",
+      "color": "#e5a835",
+      "channels": "LinkedIn, Email, Website",
+      "target": "Garment buyers and importers",
+      "pillars": "Sourcing insights, Quality control, Bangladesh manufacturing",
+      "goal": "Build a qualified B2B pipeline"
+    },
+    {
+      "id": "jubayer",
+      "name": "I am Jubayer",
+      "kind": "Personal brand",
+      "focus": "Long-term brand asset",
+      "color": "#7685ff",
+      "channels": "YouTube, Facebook, LinkedIn, YouTube Shorts",
+      "target": "People interested in science, business, AI and creativity",
+      "pillars": "Science, Business, AI, Marketing, Personal journey",
+      "goal": "2 long-form videos per month"
+    },
+    {
+      "id": "cnmotos",
+      "name": "CNMOTOS",
+      "kind": "Media",
+      "focus": "Automated media asset",
+      "color": "#ed7656",
+      "channels": "Facebook, X, Instagram, Website",
+      "target": "Motorsport and automotive readers",
+      "pillars": "News, Analysis, Explainers",
+      "goal": "Repurpose articles into 5 weekly social posts"
+    },
+    {
+      "id": "alabama",
+      "name": "AlabamaFootball",
+      "kind": "Media",
+      "focus": "Automated media asset",
+      "color": "#ce5373",
+      "channels": "Facebook, X, Instagram, Website",
+      "target": "Alabama football followers",
+      "pillars": "News, Analysis, Match coverage",
+      "goal": "Repurpose articles into 5 weekly social posts"
+    },
+    {
+      "id": "biggan",
+      "name": "Biggan PiC",
+      "kind": "Science & commerce",
+      "focus": "Milestone growth",
+      "color": "#3994dc",
+      "channels": "YouTube, Facebook, Instagram",
+      "target": "Science enthusiasts",
+      "pillars": "Science facts, Experiments, Merchandise",
+      "goal": "Alternate Thursday attention"
+    },
+    {
+      "id": "ghuraghuri",
+      "name": "GhuraghuriBD",
+      "kind": "Travel",
+      "focus": "Milestone growth",
+      "color": "#55a97b",
+      "channels": "Facebook, Instagram, TikTok",
+      "target": "Travel enthusiasts in Bangladesh",
+      "pillars": "Destinations, Experiences, Travel tips",
+      "goal": "Alternate Thursday attention"
+    }
+  ],
+  "clients": [
+    {
+      "id": "nahar",
+      "name": "Nahar\u2019s Dental Care",
+      "business_id": "artbit",
+      "contact": "Doctor / clinic team",
+      "email": "",
+      "fee": 2000000,
+      "status": "Active",
+      "notes": "Sample billing amount. Replace with the actual client agreement. Educational Bangla content; blue and white dental style.",
+      "demo": true
+    },
+    {
+      "id": "sample-client",
+      "name": "Example Brand",
+      "business_id": "artbit",
+      "contact": "Client team",
+      "fee": 3500000,
+      "status": "Onboarding",
+      "notes": "Example agency client.",
+      "demo": true
+    }
+  ],
+  "projects": [
+    {
+      "id": "p1",
+      "title": "October dental content batch",
+      "business_id": "artbit",
+      "client_id": "nahar",
+      "due": "2026-10-08",
+      "status": "Review",
+      "notes": "Review clinic-approved topics and visual drafts.",
+      "demo": true
+    },
+    {
+      "id": "p2",
+      "title": "AI product film case study",
+      "business_id": "vidzones",
+      "due": "2026-10-10",
+      "status": "In progress",
+      "notes": "Turn the master project into a showcase, carousel and LinkedIn case study.",
+      "demo": true
+    },
+    {
+      "id": "p3",
+      "title": "Personal brand launch",
+      "business_id": "jubayer",
+      "due": "2026-10-19",
+      "status": "Planned",
+      "demo": true
+    }
+  ],
+  "content": [
+    {
+      "id": "c1",
+      "title": "Gum health: what bleeding tells you",
+      "business_id": "artbit",
+      "client_id": "nahar",
+      "channel": "Facebook",
+      "format": "Post",
+      "status": "In review",
+      "date": "2026-10-07",
+      "copy": "Headline and medical claims await doctor review.\nVisual direction: clean blue and white, clear Bengali headline.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c2",
+      "title": "AI product video: behind the scenes",
+      "business_id": "vidzones",
+      "client_id": "",
+      "channel": "Instagram",
+      "format": "Reel",
+      "status": "In review",
+      "date": "2026-10-08",
+      "copy": "Show the brief, the creative direction and the final result. Include a short explanation of the production process.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c3",
+      "title": "A practical garment quality checklist",
+      "business_id": "qfs",
+      "client_id": "",
+      "channel": "LinkedIn",
+      "format": "Carousel",
+      "status": "In review",
+      "date": "2026-10-09",
+      "copy": "A five-point quality checklist for buyers. Validate each point against your own operating procedures.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c4",
+      "title": "From one article to five social posts",
+      "business_id": "cnmotos",
+      "client_id": "",
+      "channel": "Facebook",
+      "format": "Post",
+      "status": "Approved",
+      "date": "2026-10-08",
+      "copy": "Sample repurposing draft. Add a verified source article before publishing.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c5",
+      "title": "Weekly coverage plan",
+      "business_id": "alabama",
+      "client_id": "",
+      "channel": "X",
+      "format": "Post",
+      "status": "Draft",
+      "date": "2026-10-09",
+      "copy": "Add a verified article and confirm team news before submitting for review.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c6",
+      "title": "How I build an AI-first workday",
+      "business_id": "jubayer",
+      "client_id": "",
+      "channel": "YouTube",
+      "format": "Script",
+      "status": "Draft",
+      "date": "2026-10-12",
+      "copy": "Hook: What if most of your day was spent making decisions instead of repeating tasks?\nAdd your own experience and examples.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c7",
+      "title": "Science you can wear",
+      "business_id": "biggan",
+      "client_id": "",
+      "channel": "Instagram",
+      "format": "Carousel",
+      "status": "Idea",
+      "date": "2026-10-14",
+      "copy": "Explore a science-inspired merchandise story.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c8",
+      "title": "A weekend travel checklist",
+      "business_id": "ghuraghuri",
+      "client_id": "",
+      "channel": "Facebook",
+      "format": "Post",
+      "status": "Draft",
+      "date": "2026-10-13",
+      "copy": "Add destination-specific advice and verify travel details.",
+      "notes": "",
+      "demo": true
+    },
+    {
+      "id": "c9",
+      "title": "October agency content plan",
+      "business_id": "artbit",
+      "client_id": "",
+      "channel": "LinkedIn",
+      "format": "Post",
+      "status": "Approved",
+      "date": "2026-10-07",
+      "copy": "Show the creative process behind a recent client project. Obtain permission before including client details.",
+      "notes": "",
+      "demo": true
+    }
+  ],
+  "leads": [
+    {
+      "id": "l1",
+      "name": "Example Apparel Buyer",
+      "business_id": "qfs",
+      "contact": "Buying team",
+      "value": 18000000,
+      "stage": "Qualified",
+      "next_date": "2026-10-06",
+      "notes": "Sample prospect. Research and verify a real company before outreach.",
+      "demo": true
+    },
+    {
+      "id": "l2",
+      "name": "Example DTC Brand",
+      "business_id": "vidzones",
+      "value": 8500000,
+      "stage": "Proposal",
+      "next_date": "2026-10-07",
+      "notes": "Sample opportunity.",
+      "demo": true
+    },
+    {
+      "id": "l3",
+      "name": "Example Local Business",
+      "business_id": "artbit",
+      "value": 5000000,
+      "stage": "Meeting",
+      "next_date": "2026-10-05",
+      "demo": true
+    }
+  ],
+  "invoices": [
+    {
+      "id": "i1",
+      "title": "Nahar\u2019s Dental \u00b7 monthly retainer",
+      "business_id": "artbit",
+      "client_id": "nahar",
+      "amount": 2000000,
+      "paid": 0,
+      "date": "2026-09-28",
+      "due": "2026-10-04",
+      "notes": "Sample invoice, not an actual receivable.",
+      "demo": true
+    },
+    {
+      "id": "i2",
+      "title": "Product film \u00b7 deposit",
+      "business_id": "vidzones",
+      "amount": 8500000,
+      "paid": 8500000,
+      "date": "2026-10-02",
+      "due": "2026-10-07",
+      "notes": "Sample paid invoice.",
+      "demo": true
+    }
+  ],
+  "transactions": [
+    {
+      "id": "t1",
+      "title": "Product film deposit",
+      "business_id": "vidzones",
+      "kind": "Income",
+      "amount": 8500000,
+      "date": "2026-10-05",
+      "category": "Client payment",
+      "invoice_id": "i2",
+      "demo": true
+    },
+    {
+      "id": "t2",
+      "title": "Agency project payment",
+      "business_id": "artbit",
+      "kind": "Income",
+      "amount": 6000000,
+      "date": "2026-10-05",
+      "category": "Project fee",
+      "demo": true
+    },
+    {
+      "id": "t3",
+      "title": "Freelance editing",
+      "business_id": "vidzones",
+      "kind": "Expense",
+      "amount": 1800000,
+      "date": "2026-10-05",
+      "category": "Production",
+      "demo": true
+    },
+    {
+      "id": "t4",
+      "title": "Design production",
+      "business_id": "artbit",
+      "kind": "Expense",
+      "amount": 1200000,
+      "date": "2026-10-05",
+      "category": "Production",
+      "demo": true
+    },
+    {
+      "id": "t5",
+      "title": "Media hosting",
+      "business_id": "cnmotos",
+      "kind": "Expense",
+      "amount": 250000,
+      "date": "2026-10-05",
+      "category": "Hosting",
+      "demo": true
+    }
+  ],
+  "resources": [
+    {
+      "id": "r1",
+      "name": "AI creative subscription",
+      "type": "Subscription",
+      "cost": 250000,
+      "cycle": "Monthly",
+      "renewal": "2026-10-11",
+      "owner": "Jubayer",
+      "notes": "Sample cost in BDT. Replace with your actual subscription.",
+      "demo": true
+    },
+    {
+      "id": "r2",
+      "name": "iamjubayer.com",
+      "business_id": "jubayer",
+      "type": "Domain",
+      "cost": 180000,
+      "cycle": "Annual",
+      "renewal": "2026-11-24",
+      "url": "https://iamjubayer.com",
+      "owner": "Jubayer",
+      "notes": "Sample renewal and cost.",
+      "demo": true
+    },
+    {
+      "id": "r3",
+      "name": "Brand identity & creative assets",
+      "business_id": "artbit",
+      "type": "Asset",
+      "cost": 0,
+      "cycle": "None",
+      "notes": "Add the location of your logo, fonts and brand guide.",
+      "demo": true
+    },
+    {
+      "id": "r4",
+      "name": "Freelance video editor",
+      "business_id": "vidzones",
+      "type": "Team",
+      "cost": 0,
+      "cycle": "None",
+      "owner": "External collaborator",
+      "notes": "Sample resource. Add availability and responsibilities.",
+      "demo": true
+    }
+  ],
+  "plans": [
+    {
+      "id": "m1",
+      "title": "Vidzones \u00b7 October visibility",
+      "business_id": "vidzones",
+      "objective": "Generate qualified video-production inquiries",
+      "audience": "Agencies, e-commerce brands, startups",
+      "channels": "Instagram, LinkedIn, YouTube Shorts",
+      "pillars": "AI video, Case studies, Before/after, Production education",
+      "cadence": "4 posts/week: 2 showcases, 1 education, 1 case study",
+      "kpi": "Qualified inquiries and booked calls",
+      "date": "2026-10-05",
+      "notes": "Batch repurpose completed projects. Review on Sunday and Thursday.",
+      "demo": true
+    }
+  ],
+  "recipes": [
+    {
+      "id": "a1",
+      "title": "Article \u2192 social pack",
+      "trigger": "A new verified website article is ready",
+      "steps": "1. Read the source article\n2. Draft platform-specific copy\n3. Prepare an image brief\n4. Submit for review\n5. Publish only after approval",
+      "output": "Facebook post, X post, Instagram caption, carousel copy",
+      "enabled": false,
+      "demo": true
+    },
+    {
+      "id": "a2",
+      "title": "Video \u2192 content pack",
+      "business_id": "jubayer",
+      "trigger": "A long-form video is complete",
+      "steps": "1. Identify 3\u20135 short clips\n2. Draft captions and titles\n3. Draft a website article\n4. Review each asset\n5. Send approved items to the publisher",
+      "output": "Shorts, article, social posts, thumbnail concepts",
+      "enabled": false,
+      "demo": true
+    },
+    {
+      "id": "a3",
+      "title": "QFS lead research",
+      "business_id": "qfs",
+      "trigger": "A target company is added",
+      "steps": "1. Research company fit\n2. Verify buyer/contact\n3. Summarize evidence\n4. Draft personalized outreach\n5. Human review before any message",
+      "output": "Qualified lead summary and outreach draft",
+      "enabled": false,
+      "demo": true
+    }
+  ],
+  "tasks": [],
+  "reviews": []
+}

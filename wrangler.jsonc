@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "grow-os",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-05",
+  "account_id": "8e6fd4a644b243698023640eb467b6c2",
+  "workers_dev": false,
+  "preview_urls": false,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": true
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "WORKSPACE",
+        "class_name": "GrowWorkspace"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": [
+        "GrowWorkspace"
+      ]
+    }
+  ],
+  "vars": {
+    "WORKSPACE_ID": "jubayer-grow",
+    "APP_ORIGIN": "https://os.iamjubayer.com"
+  },
+  "routes": [
+    {
+      "pattern": "os.iamjubayer.com",
+      "custom_domain": true
+    }
+  ],
+  "observability": {
+    "enabled": true,
+    "traces": {
+      "enabled": true
+    }
+  }
+}

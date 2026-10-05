@@ -1,0 +1,216 @@
+{
+  "fields": {
+    "businesses": {
+      "name": "text",
+      "kind": "text",
+      "focus": "text",
+      "color": "text",
+      "channels": "text",
+      "target": "text",
+      "pillars": "text",
+      "goal": "text"
+    },
+    "clients": {
+      "name": "text",
+      "business_id": "ref:businesses",
+      "contact": "text",
+      "email": "text",
+      "fee": "money",
+      "status": "enum:Active,Onboarding,Paused",
+      "notes": "text"
+    },
+    "projects": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "due": "date",
+      "status": "enum:Planned,In progress,Review,Done",
+      "notes": "text"
+    },
+    "content": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "channel": "enum:Facebook,Instagram,LinkedIn,YouTube,YouTube Shorts,X,TikTok,Website",
+      "format": "enum:Post,Carousel,Reel,Article,Video,Script",
+      "status": "enum:Idea,Draft,In review,Changes requested,Approved,Scheduled,Published,Rejected",
+      "date": "date",
+      "copy": "text",
+      "notes": "text"
+    },
+    "leads": {
+      "name": "text",
+      "business_id": "ref:businesses",
+      "contact": "text",
+      "email": "text",
+      "value": "money",
+      "stage": "enum:Lead,Qualified,Contacted,Meeting,Proposal,Negotiation,Won,Lost",
+      "next_date": "date",
+      "notes": "text"
+    },
+    "transactions": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "kind": "enum:Income,Expense",
+      "amount": "money",
+      "date": "date",
+      "category": "text",
+      "notes": "text"
+    },
+    "invoices": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "amount": "money",
+      "paid": "money",
+      "date": "date",
+      "due": "date",
+      "notes": "text"
+    },
+    "resources": {
+      "name": "text",
+      "business_id": "ref:businesses?",
+      "type": "enum:Subscription,Domain,Hosting,Team,Asset,SOP,Software",
+      "cost": "money",
+      "renewal": "date",
+      "cycle": "enum:Monthly,Annual,One-time,None",
+      "url": "url",
+      "owner": "text",
+      "notes": "text"
+    },
+    "plans": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "objective": "text",
+      "audience": "text",
+      "channels": "text",
+      "pillars": "text",
+      "cadence": "text",
+      "kpi": "text",
+      "date": "date",
+      "notes": "text"
+    },
+    "reviews": {
+      "title": "text",
+      "date": "date",
+      "wins": "text",
+      "blockers": "text",
+      "decisions": "text",
+      "next_week": "text"
+    },
+    "tasks": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "status": "enum:Open,In progress,Blocked,Done",
+      "due": "date",
+      "priority": "enum:High,Medium,Low",
+      "external_id": "text",
+      "url": "url"
+    },
+    "recipes": {
+      "title": "text",
+      "business_id": "ref:businesses?",
+      "trigger": "text",
+      "steps": "text",
+      "output": "text",
+      "enabled": "bool"
+    }
+  },
+  "required": {
+    "businesses": [
+      "name"
+    ],
+    "clients": [
+      "name",
+      "business_id"
+    ],
+    "projects": [
+      "title",
+      "business_id"
+    ],
+    "content": [
+      "title",
+      "business_id",
+      "channel",
+      "format",
+      "status"
+    ],
+    "leads": [
+      "name",
+      "business_id",
+      "stage"
+    ],
+    "transactions": [
+      "title",
+      "business_id",
+      "kind",
+      "amount",
+      "date"
+    ],
+    "invoices": [
+      "title",
+      "business_id",
+      "amount",
+      "date",
+      "due"
+    ],
+    "resources": [
+      "name",
+      "type"
+    ],
+    "plans": [
+      "title",
+      "business_id"
+    ],
+    "reviews": [
+      "title",
+      "date"
+    ],
+    "tasks": [
+      "title",
+      "business_id",
+      "status",
+      "external_id"
+    ],
+    "recipes": [
+      "title",
+      "trigger",
+      "steps"
+    ]
+  },
+  "transitions": {
+    "Idea": [
+      "Draft",
+      "Rejected"
+    ],
+    "Draft": [
+      "In review",
+      "Rejected"
+    ],
+    "In review": [
+      "Approved",
+      "Changes requested",
+      "Rejected"
+    ],
+    "Changes requested": [
+      "Draft",
+      "In review",
+      "Rejected"
+    ],
+    "Approved": [
+      "Scheduled",
+      "Draft",
+      "Rejected"
+    ],
+    "Scheduled": [
+      "Published",
+      "Approved"
+    ],
+    "Published": [],
+    "Rejected": [
+      "Draft"
+    ]
+  }
+}
