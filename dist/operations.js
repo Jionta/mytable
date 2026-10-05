@@ -38,7 +38,7 @@ function referenceOptions(f,record,entity){
   const bid=record.business_id??scope;
   const cid=record.client_id;
   const items=(store[f.ref]||[]).filter(item=>(!bid||item.business_id===bid)&&(!cid||!item.client_id||item.client_id===cid));
-  return (f.required?[]:[['','Not linked']]).concat(items.map(item=>[item.id,item.title||item.name]));
+  return (f.required?[['','Choose '+f.label.toLowerCase()] ]:[['','Not linked']]).concat(items.map(item=>[item.id,item.title||item.name]));
 }
 function opsButton(label,action,extra='',primary=false){return btn(label,action,extra,primary?'primary':'secondary compact');}
 function newOperation(entity,label,bid='',cid='',extra=''){return opsButton(label,'op-new',`data-entity="${entity}" data-business="${esc(bid)}" data-client="${esc(cid)}" ${extra}`,true);}
@@ -47,7 +47,7 @@ const opsBadge=status=>`<span class="badge ${['Ready','Print-ready','Delivered',
 const sampleTag=record=>record.demo?'<span class="badge warn">Sample</span>':'';
 const opRows=(entity,items,columns)=>items.length?table([...columns.map(([label])=>label),''],items.map(item=>`<tr>${columns.map(([,value])=>`<td>${value(item)}</td>`).join('')}<td>${editbtn(entity,item.id)}</td></tr>`).join('')):empty('No records here yet','Add the first record to start this workflow.');
 const opTitle=item=>`<strong>${esc(item.title||item.name)}</strong>${sampleTag(item)}`;
-function businessIntro(bid,text,actions=''){const b=business(bid);return heading(b?.name||bname(bid),text,`${b?.website?safeLink(b.website,'Open website','btn secondary'):''}${actions}`);}
+function businessIntro(bid,text,actions=''){const b=business(bid);return heading(b?.name||bname(bid),text,`${b?.website?safeLink(b.website,'Open website','btn secondary'):''}${b?editbtn('businesses',bid,'Business profile'):''}${actions}`);}
 const byBusiness=(entity,bid)=> (store[entity]||[]).filter(item=>item.business_id===bid);
 const monthOf=item=>(item.date||item.due||'').slice(0,7);
 const myTasks=()=>all('tasks').filter(task=>task.origin!=='Imported');
