@@ -5,6 +5,9 @@ import { requestPublishing } from './publishing';
 const encoder=new TextEncoder();
 const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value)))).map(b=>b.toString(16).padStart(2,'0')).join('');
 const json=(payload:unknown,status=200)=>Response.json(payload,{status,headers:{'Cache-Control':'no-store'}});
+type ImportedPost=Awaited<ReturnType<typeof hydratePosts>>[number];
+const postFingerprint=(post:ImportedPost)=>digest(JSON.stringify({title:post.title||'',content:post.baseContent,variants:post.variants.map(v=>({platform:v.platform,content:v.content,title:v.title||''})).sort((a,b)=>a.platform.localeCompare(b.platform)),mediaIds:post.media.map(m=>m.id),accountIds:[...post.accountIds].sort()}));
+const payloadFingerprint=(payload:{title?:string;content:string;platforms:string[];variants:{platform:string;content:string;title?:string}[];mediaIds:string[];accountIds?:string[]})=>digest(JSON.stringify({title:payload.title||'',content:payload.content,variants:payload.platforms.map(platform=>({platform,content:payload.variants.find(v=>v.platform===platform)?.content??payload.content,title:payload.variants.find(v=>v.platform===platform)?.title||payload.title||''})).sort((a,b)=>a.platform.localeCompare(b.platform)),mediaIds:payload.mediaIds,accountIds:[...(payload.accountIds||[])].sort()}));
 const stable=(value:string[])=>[...value].sort().join('\0');
 async function bridgeJSON(request:Request):Promise<Record<string,unknown>>{
  if(!request.headers.get('Content-Type')?.startsWith('application/json'))throw new TypeError('Send JSON.');
@@ -33,18 +36,21 @@ export async function growBridge(request:Request,env:Env){
    const payload={...validated.data,scheduledFor:null,revision:undefined};
    const id='grow_'+await digest(input.sourceKey+'\0'+JSON.stringify(payload));
    const saved=await savePost(env.DB,payload,workspaceId,userId,undefined,id);
-   return 'error'in saved?json({error:saved.error},saved.status):json({...saved,url:'https://social.iamjubayer.com/?growPost='+saved.id});
+   if('error'in saved)return json({error:saved.error},saved.status);
+   const existing=await env.DB.prepare(`SELECT ${postColumns} FROM posts p WHERE p.id=? AND p.workspace_id=?`).bind(saved.id,workspaceId).first<PostRow>();
+   if(!existing||await postFingerprint((await hydratePosts(env.DB,[existing]))[0])!==await payloadFingerprint(payload))return json({error:'This imported draft changed in Social. Review it there, or create a new GROW content record for a different post.'},409);
+   return json({...saved,url:'https://social.iamjubayer.com/?growPost='+saved.id});
   }
   const match=/^\/posts\/(grow_[a-f0-9]{64})(\/publish)?$/.exec(path);
   if(match&&((request.method==='GET'&&!match[2])||(request.method==='POST'&&match[2]))){
    const row=await env.DB.prepare(`SELECT ${postColumns} FROM posts p WHERE p.id=? AND p.workspace_id=? AND p.deleted_at IS NULL`).bind(match[1],workspaceId).first<PostRow>();
    if(!row)return json({error:'This Social draft is unavailable. Open Social to check its history.'},404);
    const post=(await hydratePosts(env.DB,[row]))[0];
-   if(!match[2])return json({id:row.id,state:row.state,revision:row.revision,targets:post.targets.map(t=>({label:t.label,platform:t.platform,state:t.state,lastError:t.lastError})),url:'https://social.iamjubayer.com/?growPost='+row.id});
+   if(!match[2])return json({id:row.id,state:row.state,revision:row.revision,matches:await postFingerprint(post)===request.headers.get('X-Grow-Fingerprint'),targets:post.targets.map(t=>({label:t.label,platform:t.platform,state:t.state,lastError:t.lastError})),url:'https://social.iamjubayer.com/?growPost='+row.id});
    const input=schema.safeParse((await bridgeJSON(request)).payload);if(!input.success)return json({error:'An approved content snapshot is required.'},400);
    const expected=input.data;
    if(expected.platforms.length!==1||expected.platforms[0]!=='facebook'||!expected.accountIds?.length)return json({error:'Choose Facebook Pages to publish. Other networks are draft-only.'},400);
-   if((row.title||'')!==(expected.title||'')||row.baseContent!==expected.content||stable(post.accountIds)!==stable(expected.accountIds)||post.variants.length!==1||post.variants[0].platform!=='facebook'||post.variants[0].content!==expected.content||post.media.map(m=>m.id).join('\0')!==expected.mediaIds.join('\0'))return json({error:'This draft changed in Social. Review it there before publishing.'},409);
+   if((row.title||'')!==(expected.title||'')||row.baseContent!==expected.content||stable(post.accountIds)!==stable(expected.accountIds)||post.variants.length!==1||post.variants[0].platform!=='facebook'||post.variants[0].content!==expected.content||(post.variants[0].title||'')!==(expected.title||'')||post.media.map(m=>m.id).join('\0')!==expected.mediaIds.join('\0'))return json({error:'This draft changed in Social. Review it there before publishing.'},409);
    const result=await requestPublishing(env,workspaceId,row.id,row.revision);
    return 'error'in result?json({error:result.error},result.status):json(result,202);
   }

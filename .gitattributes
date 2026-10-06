@@ -1,0 +1,2 @@
+# Unified patches contain space-prefixed empty context lines.
+integrations/orbit-social/*.patch whitespace=-blank-at-eol

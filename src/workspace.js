@@ -1,4 +1,4 @@
-import {publisherAction,ensureUpload,attachMedia,detachMedia} from './publisher.js';
+import {publisherAction,ensureUpload,attachMedia,detachMedia,publisherLocked} from './publisher.js';
 import { DurableObject } from 'cloudflare:workers';
 import schema from './schema.json';
 import seedTemplate from './seed-template.json';
@@ -274,6 +274,7 @@ export class GrowWorkspace extends DurableObject {
     const old = parts.length === 3 ? this.one(entity, parts[2]) : null;
     if(entity==='tasks' && old?.origin==='Imported')throw new ValidationError('Imported tasks are read-only snapshots. Create a GROW task to manage it here.');
     if (method === 'DELETE' && old) {
+      if(entity==='content'&&publisherLocked.includes(old.publisher_state))throw new ValidationError('Check this post in Social before deleting it. Publishing and published records are retained to keep their history.');
       if (entity==='transactions' && old.invoice_id) throw new ValidationError('An invoice payment cannot be deleted from the ledger.');
       deleteOperations(this,entity,old);
       if (entity === 'invoices' && old.paid > 0) throw new ValidationError('Paid invoices are retained to protect the ledger.');

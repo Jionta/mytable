@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {readFileSync,readdirSync} from 'node:fs';
 import {build} from 'esbuild';
 import {Miniflare,convertV4MiniflareOptions} from 'miniflare';
@@ -16,9 +17,10 @@ try{
  const retry=await(await request('/drafts','POST',{sourceKey:'grow-fixture:one',payload})).json();assert.equal(retry.id,drafts[0].id);assert.equal(retry.revision,0);
  const file='fixture-photo-bytes';const uploaded=await request('/uploads','POST',file,{headers:{'Content-Type':'image/png','Content-Length':String(file.length),'X-File-Name':'fixture.png'}});assert.equal(uploaded.status,201);const media=await uploaded.json();assert.equal(media.filename,'fixture.png');assert.equal(media.bytes,file.length);
  const changed=await(await request('/drafts','POST',{sourceKey:'grow-fixture:one',payload:{...payload,mediaIds:[media.id]}})).json();assert.notEqual(changed.id,drafts[0].id);assert.equal((await db.prepare('SELECT count(*) AS n FROM post_media WHERE post_id=?').bind(changed.id).first()).n,1);
- const status=await(await request('/posts/'+changed.id)).json();assert.equal(status.state,'draft');assert(!JSON.stringify(status).includes(secret));assert.equal((await request('/posts/'+changed.id+'/publish','POST',{payload})).status,400);
+ const fingerprint=createHash('sha256').update(JSON.stringify({title:payload.title,content:payload.content,variants:[{platform:'facebook',content:payload.content,title:payload.title}],mediaIds:[media.id],accountIds:[]})).digest('hex');const status=await(await request('/posts/'+changed.id,'GET',undefined,{headers:{'X-Grow-Fingerprint':fingerprint}})).json();assert.equal(status.matches,true);assert.equal(status.state,'draft');assert(!JSON.stringify(status).includes(secret));assert.equal((await request('/posts/'+changed.id+'/publish','POST',{payload})).status,400);
  assert.equal((await request('/posts/not-a-grow-post')).status,404);
  assert.equal((await request('/drafts','POST',{sourceKey:'bad',payload:{...payload,mediaIds:['foreign-media']}})).status,409);
  const login=await mf.dispatchFetch('https://social.iamjubayer.com/?growPost='+changed.id,{redirect:'manual'});assert.equal(login.status,303);assert.equal(login.headers.get('Location'),'/login?post='+changed.id);const html=await(await mf.dispatchFetch('https://social.iamjubayer.com/login?post='+changed.id)).text();assert(html.includes('/auth/login?post='+changed.id));
+ await db.prepare("UPDATE posts SET base_content='Edited in Social' WHERE id=?").bind(drafts[0].id).run();assert.equal((await request('/drafts','POST',{sourceKey:'grow-fixture:one',payload})).status,409);const different=await(await request('/posts/'+drafts[0].id,'GET',undefined,{headers:{'X-Grow-Fingerprint':fingerprint}})).json();assert.equal(different.matches,false);
  console.log('GROW bridge: private authentication, concurrent draft deduplication, streamed media, scope checks and draft login handoff passed. No live posts sent.');
 }finally{await mf.dispose();}

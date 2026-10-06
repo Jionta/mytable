@@ -9,9 +9,13 @@ export function publisherPayload(db,record,accountIds){
  if(record.copy.trim().length>5000)throw new db.ValidationError('Social captions support up to 5,000 characters. Shorten this caption first.');
  return {title:record.title.slice(0,120).trim(),content:record.copy.trim(),platforms:[platform],variants:[],mediaIds:media.map(m=>m.id),accountIds,scheduledFor:null,timezone:'Asia/Dhaka'};
 }
-export async function socialRequest(env,path,method='GET',data){
+export async function approvedFingerprint(payload){
+ const value={title:payload.title||'',content:payload.content,variants:payload.platforms.map(platform=>({platform,content:payload.variants?.find(v=>v.platform===platform)?.content??payload.content,title:payload.variants?.find(v=>v.platform===platform)?.title||payload.title||''})).sort((a,b)=>a.platform.localeCompare(b.platform)),mediaIds:payload.mediaIds,accountIds:[...payload.accountIds].sort()};
+ return Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(JSON.stringify(value))))).map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+export async function socialRequest(env,path,method='GET',data,extraHeaders={}){
  if(!env.SOCIAL||!env.GROW_SOCIAL_BRIDGE_SECRET)throw new Error('The Social connection has not been configured.');
- const response=await env.SOCIAL.fetch('https://grow-bridge.internal/internal/grow'+path,{method,headers:{'X-Grow-Bridge':env.GROW_SOCIAL_BRIDGE_SECRET,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),signal:AbortSignal.timeout(30000)});
+ const response=await env.SOCIAL.fetch('https://grow-bridge.internal/internal/grow'+path,{method,headers:{...extraHeaders,'X-Grow-Bridge':env.GROW_SOCIAL_BRIDGE_SECRET,'Content-Type':'application/json'},body:data===undefined?undefined:JSON.stringify(data),signal:AbortSignal.timeout(30000)});
  const result=await response.json();if(!response.ok)throw new Error(result.error||'Social could not complete this action.');return result;
 }
 export function ensureUpload(db,id){const content=db.one('content',id);if(!['Idea','Draft','Changes requested'].includes(content.status)||publisherLocked.includes(content.publisher_state))throw new db.ValidationError('Return this content to Draft before changing its attachments.');if(JSON.parse(content.publisher_media||'[]').length>=10)throw new db.ValidationError('A post can have at most 10 attachments.');return content;}
@@ -21,8 +25,9 @@ export async function publisherAction(db,id,action,data){
  const initial=db.one('content',id);
  if(action==='status'){
   if(!initial.publisher_post_id)throw new db.ValidationError('Send this content to Social first.');
-  const result=await socialRequest(db.publisherEnv,'/posts/'+initial.publisher_post_id);
-  return db.ctx.storage.transactionSync(()=>{const record=db.one('content',id);if(record.publisher_post_id!==initial.publisher_post_id)throw new db.ValidationError('This content changed. Refresh and check again.');record.publisher_state=result.state;record.publisher_error=(result.targets||[]).map(t=>t.lastError).filter(Boolean).join('; ').slice(0,1000);if(result.state==='published'){record.status='Published';record.date=record.date||db.today();}record.updated_at=new Date().toISOString();db.put('content',record);return {...result,record};});
+  let fingerprint='',snapshot='';try{const payload=publisherPayload(db,initial,JSON.parse(initial.publisher_account_ids||'[]'));snapshot=JSON.stringify(payload);fingerprint=await approvedFingerprint(payload);}catch{}
+  const result=await socialRequest(db.publisherEnv,'/posts/'+initial.publisher_post_id,'GET',undefined,{'X-Grow-Fingerprint':fingerprint});
+  return db.ctx.storage.transactionSync(()=>{const record=db.one('content',id);if(record.publisher_state==='sending')throw new db.ValidationError('A publishing action is in progress. Wait a moment, then check again.');if(record.publisher_post_id!==initial.publisher_post_id)throw new db.ValidationError('This content changed. Refresh and check again.');let unchanged=false;try{unchanged=JSON.stringify(publisherPayload(db,record,JSON.parse(record.publisher_account_ids||'[]')))===snapshot;}catch{}record.publisher_state=result.state;record.publisher_error=(result.targets||[]).map(t=>t.lastError).filter(Boolean).join('; ').slice(0,1000);if(result.state==='published'&&result.matches===true&&unchanged){record.status='Published';record.date=record.date||db.today();}else if(result.matches===false||!unchanged){if(result.state==='published')record.publisher_state='changed';record.publisher_error='The Social version differs from this content. Review it in Social; GROW has kept your current content status.';}record.updated_at=new Date().toISOString();db.put('content',record);return {...result,record};});
  }
  if(!['draft','publish'].includes(action))throw new db.ValidationError('Unknown publishing action.');
  const prepared=db.ctx.storage.transactionSync(()=>{
