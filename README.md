@@ -23,13 +23,13 @@ Password verification uses salted PBKDF2. Sessions last seven days and use secur
 
 Business profiles follow [Artbit](https://artbit.studio/), [QFS](https://quality1stservice.com/), [CNMOTOS](https://www.cnmotos.com/), [AlabamaFootball](https://alabamafootball.org/), [GhuraghuriBD](https://ghuraghuribd.com/) and [Vidzones](https://vidzones.com/) as reviewed October 5, 2026. Biggan PiC follows the owner's stated partnership responsibilities. Historical brands on a public website are not added as current clients. Existing example records remain labeled samples; no real client names, targets, orders, leads or metrics are invented.
 
-Platform metrics, publication, payments received, delivery and travel confirmations are manually recorded. There is no external website synchronization, social publisher, email outreach, live AI or background scheduler. Monthly planning and repeat tasks are explicit actions inside GROW.
+Platform metrics, publication, payments received, delivery and travel confirmations are manually recorded. Social connects through the private bridge described below. External website synchronization, email outreach, live AI and a background publishing scheduler are not connected. Monthly planning and repeat tasks are explicit actions inside GROW.
 
 ## Backups and migration
 
 Version 2 cloud backups include all expanded operations. The automatic upgrade adds fields and business profiles while retaining existing record IDs and data. Restore validates references, pricing, stock and ledger payments before replacing data in a single transaction. A version 1 backup can be restored only while the new operation tables are empty; it cannot silently discard expanded records.
 
-The original Python local edition has a separate database and original interface in `legacy-dist/`. It supports version 1 backups only. Do not restore a version 2 cloud backup there. Backups and credentials contain private information and belong outside this public repository.
+The original Python local edition has a separate database and original interface in `legacy-dist/`. It supports version 1 backups only. Do not restore a version 2 or 3 cloud backup there. Backups and credentials contain private information and belong outside this public repository.
 
 ## Development
 
@@ -100,3 +100,17 @@ Every content card has **Social**. Upload files while the content is a draft, su
 Facebook Pages support explicit **Publish now** with a destination preview. Sample records can be sent as drafts but cannot be published; create your own content record for live posts. GROW updates content to Published only after Social reports successful publication of the matching approved version. It preserves the current GROW status if Social or GROW content has changed. For other networks, open the imported draft in Social. Scheduled dates remain reminders; no automatic timer publishes posts. An uncertain result retains the linked post for reconciliation rather than creating another post. The service binding and private bridge secret are required; see [the adapter](integrations/orbit-social/README.md).
 
 Backups now use `grow_version: 3` and include people, memberships, business links and publisher attachment references. Passwords, invitation tokens and sessions are excluded. A restore validates memberships/references, refuses changing an activated member's email, clears pending invitations and signs members out. Earlier backups cannot discard existing collaboration data. Back up Social separately: GROW references its posts and media but does not export its R2 files or OAuth settings.
+
+
+## Interactive desk · version 2.2
+
+- Command Center prioritizes your own tasks, blocked/overdue decisions, upcoming dates, client approvals, team workload and recorded cash. Business health also includes overdue and blocked tasks.
+- Quick task capture (`Q`) creates personal or business work with a client, an active business member, due date, brief, priority and repeat frequency. Header access is available on every owner screen. `P` opens Planner; Ctrl/Cmd K searches record names, briefs, notes and contacts.
+- Task Board supports drag between stages, keyboard/touch status menus, person/client/priority/due filters, list view, task checklists and linked work. Tomorrow/next-week actions reschedule a task. Bulk updates affect only selected visible native tasks and report partial failures; checklist completion and recurrence still use the existing server guards. Imported snapshots cannot be moved.
+- Planner shows day/week views of open tasks, content planning dates, projects, follow-ups, invoice balances, renewals, orders, website work and unfinished video production. Add a task directly on a date; open a record to act on it. Calendar dates do not publish or notify automatically.
+- Client workspace brings together responsibilities, content/Social, projects, monthly plans, invoices/payments, brand information and links. Client search and status filters make account management easier.
+- Activity shows the latest 60 audited changes. Business filtering includes events whose surviving record belongs to that business; it cannot recover deleted record details.
+- Members retain assigned-task isolation and get search, due/blocked filters, workload counts and save error recovery. Owners opening the member work URL return to the owner workspace.
+- Local browser preferences remember business and task/planner view IDs only. Workspace records and credentials stay outside browser localStorage. This release retains version 3 backups and makes no storage migration.
+
+Interactive checks: `npm run test:ui` covers task interactions, member filters/save recovery and `node tests/render_check.cjs`. The latter renders every owner module across all businesses; browser verification covers task capture, filtering, stage menus, drag/drop, bulk updates, client overview and responsive layouts using disposable local fixtures.

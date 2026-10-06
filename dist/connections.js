@@ -38,4 +38,3 @@ openEditor=function(entity,id='',defaults={}){
 };
 document.addEventListener('click',event=>{const el=event.target.closest('[data-action="assign-linked-work"]');if(!el)return;const entity=el.dataset.entity,record=found(entity,el.dataset.id),linked={content:'content_id',projects:'project_id',productions:'production_id'}[entity];openEditor('tasks','',{title:record.title,business_id:record.business_id,client_id:record.client_id||'',...(linked?{[linked]:record.id}:{}),url:entity==='website_work'?record.url:'',due:record.due||record.date||'',notes:record.brief||record.notes||'',status:'Open',priority:'Medium',origin:'GROW',recurrence:'None'});});
 document.addEventListener('input',event=>{if(event.target.id==='publisher-account-search')for(const label of document.querySelectorAll('.publisher-destination'))label.hidden=!label.dataset.label.includes(event.target.value.trim().toLowerCase());});
-boot();
