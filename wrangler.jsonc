@@ -42,5 +42,11 @@
     "traces": {
       "enabled": true
     }
-  }
+  },
+  "services": [
+    {
+      "binding": "SOCIAL",
+      "service": "orbit-social"
+    }
+  ]
 }

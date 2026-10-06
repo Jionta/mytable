@@ -1,19 +1,22 @@
+import {publisherAction,ensureUpload,attachMedia,detachMedia} from './publisher.js';
 import { DurableObject } from 'cloudflare:workers';
 import schema from './schema.json';
 import seedTemplate from './seed-template.json';
 import { newEntities, migratePersonalOS, validateOperations, deleteOperations, afterSave, operationsMutation, orderTotal, stock } from './operations.js';
 
+import {collaborationEntities,validateCollaboration,memberSnapshot,authorizeMember,migrateCollaboration,activeBusinesses,AccessError} from './collaboration.js';
+
 const { fields: FIELDS, required: REQUIRED, transitions: TRANSITIONS } = schema;
 const entities = Object.keys(FIELDS);
 const now = () => new Date().toISOString();
 export const today = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-export class ValidationError extends Error {}
+export class ValidationError extends Error {name='ValidationError';}
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
 export class GrowWorkspace extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.sql = ctx.storage.sql;
+    this.sql = ctx.storage.sql;this.publisherEnv=env;
     this.fields = FIELDS;
     this.ValidationError = ValidationError;
     this.today = today;
@@ -24,9 +27,12 @@ export class GrowWorkspace extends DurableObject {
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS activity(id TEXT PRIMARY KEY,at TEXT NOT NULL,action TEXT NOT NULL,entity TEXT NOT NULL,record_id TEXT NOT NULL,detail TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_activity_at ON activity(at);
+        CREATE TABLE IF NOT EXISTS member_accounts(person_id TEXT PRIMARY KEY,password_hash TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS member_invites(token_hash TEXT PRIMARY KEY,person_id TEXT NOT NULL,expires INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS login_attempts(ip_hash TEXT PRIMARY KEY,attempts INTEGER NOT NULL,expires INTEGER NOT NULL);
       `);
+      if(!this.sql.exec('PRAGMA table_info(sessions)').toArray().some(c=>c.name==='person_id'))this.sql.exec("ALTER TABLE sessions ADD COLUMN person_id TEXT NOT NULL DEFAULT ''");
       if (!this.sql.exec("SELECT value FROM meta WHERE key='version'").toArray().length) {
         const dayShift = Date.parse(today()) - Date.parse('2026-10-05');
         for (const entity of entities) {
@@ -44,7 +50,7 @@ export class GrowWorkspace extends DurableObject {
         this.saveSettings({ task_manager_url: '', owner: 'Jubayer', review_days: 'Sunday and Thursday', workspace_name: 'GROW', currency: 'BDT' });
         this.sql.exec("INSERT INTO meta(key,value) VALUES('version','1')");
       }
-      migratePersonalOS(this);
+      migratePersonalOS(this);migrateCollaboration(this);
     });
   }
 
@@ -109,7 +115,7 @@ export class GrowWorkspace extends DurableObject {
       if (old && ['Approved', 'Scheduled', 'Published'].includes(old.status) && ['title', 'copy', 'channel', 'format', 'business_id', 'client_id'].some(key => out[key] !== old[key])) throw new ValidationError('Return approved content to Draft before changing its content.');
       if (['Scheduled', 'Published'].includes(out.status) && !out.date) throw new ValidationError('Choose a planned publish date first.');
     }
-    validateOperations(this,entity,out,old,restoring);
+    validateOperations(this,entity,out,old,restoring);validateCollaboration(this,entity,out,old,restoring);
     Object.assign(out, { id: old?.id || crypto.randomUUID(), created_at: old?.created_at || now(), updated_at: now(), demo: old?.demo === true });
     if (old?.invoice_id) out.invoice_id = old.invoice_id;
     return out;
@@ -141,12 +147,13 @@ export class GrowWorkspace extends DurableObject {
     return data;
   }
   restore(payload) {
-    if (!isObject(payload) || ![1,2].includes(payload.grow_version) || !isObject(payload.data)) throw new ValidationError('Choose a GROW version 1 or 2 JSON backup.');
+    if (!isObject(payload) || ![1,2,3].includes(payload.grow_version) || !isObject(payload.data)) throw new ValidationError('Choose a GROW JSON backup (version 1–3).');
     if (payload.grow_version===1 && newEntities.some(entity=>this.rows(entity).length)) throw new ValidationError('A version 1 backup cannot replace an expanded workspace. Export a version 2 backup first and restore a complete backup.');
+    if(payload.grow_version<3&&collaborationEntities.some(entity=>this.rows(entity).length))throw new ValidationError('An older backup cannot discard your collaborators and assignments. Use a version 3 backup.');
     const staged = {}, indexes = {};
     let total = 0;
     for (const entity of entities) {
-      const items = payload.data[entity] ?? (payload.grow_version===1 && newEntities.includes(entity) ? [] : undefined);
+      const items = payload.data[entity] ?? ((payload.grow_version===1 && newEntities.includes(entity)) || (payload.grow_version<3&&collaborationEntities.includes(entity)) ? [] : undefined);
       if (!Array.isArray(items)) throw new ValidationError('Backup is missing ' + entity + '.');
       total += items.length;
       if (total > 10000) throw new ValidationError('Backup exceeds 10,000 records.');
@@ -192,17 +199,24 @@ export class GrowWorkspace extends DurableObject {
     const skuKeys=new Set(),retainerInvoices=new Set();
     for(const product of staged.products){const key=product.business_id+'|'+product.sku.toLowerCase();if(skuKeys.has(key))throw new ValidationError('Backup contains duplicate product SKUs.');skuKeys.add(key);}
     for(const invoice of staged.invoices)if(invoice.retainer_id){if(retainerInvoices.has(invoice.retainer_id))throw new ValidationError('Backup contains duplicate monthly plan invoices.');retainerInvoices.add(invoice.retainer_id);}
+    const emails=new Set(),memberships=new Set();
+    for(const person of staged.people){if(person.email&&emails.has(person.email))throw new ValidationError('Backup contains duplicate member emails.');if(person.email)emails.add(person.email);const existing=this.rows('people').find(p=>p.id===person.id);if(existing&&existing.email!==person.email&&this.sql.exec('SELECT person_id FROM member_accounts WHERE person_id=?',person.id).toArray().length)throw new ValidationError('Backup changes an activated member email. Pause their access and create a separate person instead.');}
+    for(const member of staged.business_people){const key=member.business_id+'|'+member.person_id;if(memberships.has(key))throw new ValidationError('Backup contains duplicate business memberships.');memberships.add(key);}
+    for(const task of staged.tasks)if(task.assignee_id&&!memberships.has(task.business_id+'|'+task.assignee_id))throw new ValidationError('Backup assigns a task outside its business memberships.');
     const settings = this.validateSettings(payload.data.settings || {});
     this.sql.exec('DELETE FROM records');
     for (const entity of entities) for (const item of staged[entity]) this.put(entity, item);
     this.sql.exec('DELETE FROM settings'); this.saveSettings(settings);
+    this.sql.exec("DELETE FROM sessions WHERE person_id!=''");this.sql.exec('DELETE FROM member_invites');
+    for(const account of this.sql.exec('SELECT person_id FROM member_accounts').toArray())if(!indexes.people.has(account.person_id))this.sql.exec('DELETE FROM member_accounts WHERE person_id=?',account.person_id);
     this.sql.exec('DELETE FROM activity'); this.audit('Restored', 'workspace', '', total + ' records restored from backup');
   }
-  mutate(method, path, data) {
+  mutate(method, path, data, personId='') {
     try {
-      const record = this.ctx.storage.transactionSync(() => this.mutateSync(method, path, data));
+      const record = this.ctx.storage.transactionSync(() => this.mutateSync(method, path, personId?authorizeMember(this,personId,method,path,data):data));
       return { status: 200, payload: { ok: true, record } };
     } catch (error) {
+      if (error instanceof AccessError) return {status:403,payload:{error:error.message}};
       if (error instanceof ValidationError) return { status: 400, payload: { error: error.message } };
       console.error(JSON.stringify({ event: 'workspace_save_failed', error: error.message }));
       return { status: 500, payload: { error: 'Save failed. Your previous data is safe. Please try again.' } };
@@ -264,6 +278,7 @@ export class GrowWorkspace extends DurableObject {
       deleteOperations(this,entity,old);
       if (entity === 'invoices' && old.paid > 0) throw new ValidationError('Paid invoices are retained to protect the ledger.');
       for (const type of entities) for (const record of this.rows(type)) if (Object.entries(FIELDS[type]).some(([key, fieldtype]) => fieldtype.startsWith('ref:') && fieldtype.slice(4).replace(/\?$/, '') === entity && record[key] === old.id)) throw new ValidationError('This record is in use. Remove or reassign its linked records first.');
+      if(entity==='people'){this.sql.exec('DELETE FROM member_accounts WHERE person_id=?',old.id);this.sql.exec('DELETE FROM member_invites WHERE person_id=?',old.id);this.sql.exec('DELETE FROM sessions WHERE person_id=?',old.id);}
       this.sql.exec('DELETE FROM records WHERE entity=? AND id=?', entity, old.id); this.audit('Deleted', entity, old.id, old.title || old.name); return {};
     }
     if ((method === 'POST' && !old) || (method === 'PATCH' && old)) {
@@ -290,17 +305,53 @@ export class GrowWorkspace extends DurableObject {
       return true;
     });
   }
-  createSession(tokenHash, ipHash) {
+  createSession(tokenHash, ipHash,personId='') {
     const csrf = crypto.randomUUID();
     this.ctx.storage.transactionSync(() => {
       this.sql.exec('DELETE FROM sessions WHERE expires<?', Date.now());
       this.sql.exec('DELETE FROM login_attempts WHERE ip_hash=?', ipHash);
-      this.sql.exec('INSERT INTO sessions(token_hash,csrf,expires) VALUES(?,?,?)', tokenHash, csrf, Date.now() + 7 * 86400000);
+      this.sql.exec('INSERT INTO sessions(token_hash,csrf,expires,person_id) VALUES(?,?,?,?)', tokenHash, csrf, Date.now() + 7 * 86400000,personId);
     });
     return csrf;
   }
   getSession(tokenHash) {
-    return this.sql.exec('SELECT csrf,expires FROM sessions WHERE token_hash=? AND expires>?', tokenHash, Date.now()).toArray()[0] || null;
+    const session=this.sql.exec('SELECT csrf,expires,person_id FROM sessions WHERE token_hash=? AND expires>?', tokenHash, Date.now()).toArray()[0] || null;
+    if(session?.person_id&&!activeBusinesses(this,session.person_id).size)return null;return session;
   }
   deleteSession(tokenHash) { this.sql.exec('DELETE FROM sessions WHERE token_hash=?', tokenHash); }
+  publishing(id,action,data={}){return publisherAction(this,id,action,data);}
+  uploadAllowed(id){return ensureUpload(this,id);}
+  addMedia(id,media){return attachMedia(this,id,media);}
+  removeMedia(id,mediaId){return detachMedia(this,id,mediaId);}
+  memberState(personId){return memberSnapshot(this,personId);}
+  memberCredential(email){
+    const person=this.rows('people').find(p=>p.email===email&&p.status==='Active');
+    if(!person||!activeBusinesses(this,person.id).size)return null;
+    const credential=this.sql.exec('SELECT password_hash FROM member_accounts WHERE person_id=?',person.id).toArray()[0];
+    return credential?{person_id:person.id,...credential}:null;
+  }
+  inviteInfo(tokenHash){
+    const invite=this.sql.exec('SELECT person_id,expires FROM member_invites WHERE token_hash=? AND expires>?',tokenHash,Date.now()).toArray()[0];
+    if(!invite)throw new ValidationError('This invitation expired or has already been used. Ask the owner for a new link.');
+    const person=this.one('people',invite.person_id),ids=activeBusinesses(this,person.id);
+    if(!person.email||!ids.size)throw new ValidationError('The owner must give this person an email and active business access first.');
+    return {person_id:person.id,name:person.name,email:person.email,businesses:this.rows('businesses').filter(b=>ids.has(b.id)).map(b=>b.name),expires:invite.expires};
+  }
+  createInvite(personId,tokenHash){
+    return this.ctx.storage.transactionSync(()=>{
+      const person=this.one('people',personId);if(!person.email||!activeBusinesses(this,personId).size)throw new ValidationError('Add an email and at least one active business membership first.');
+      this.sql.exec('DELETE FROM member_invites WHERE person_id=? OR expires<?',personId,Date.now());
+      this.sql.exec('INSERT INTO member_invites(token_hash,person_id,expires) VALUES(?,?,?)',tokenHash,personId,Date.now()+72*3600000);this.audit('Invited','people',personId,person.name);
+      return {expires:Date.now()+72*3600000};
+    });
+  }
+  activateInvite(tokenHash,passwordHash){
+    return this.ctx.storage.transactionSync(()=>{
+      const info=this.inviteInfo(tokenHash);
+      this.sql.exec('INSERT INTO member_accounts(person_id,password_hash) VALUES(?,?) ON CONFLICT(person_id) DO UPDATE SET password_hash=excluded.password_hash',info.person_id,passwordHash);
+      this.sql.exec('DELETE FROM member_invites WHERE person_id=?',info.person_id);this.sql.exec('DELETE FROM sessions WHERE person_id=?',info.person_id);
+      this.audit('Activated access','people',info.person_id,info.name);return {email:info.email};
+    });
+  }
+
 }

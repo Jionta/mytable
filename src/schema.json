@@ -9,7 +9,8 @@
       "target": "text",
       "pillars": "text",
       "goal": "text",
-      "website": "url"
+      "website": "url",
+      "publisher_account_id": "text"
     },
     "clients": {
       "name": "text",
@@ -27,7 +28,8 @@
       "brand_voice": "text",
       "audience": "text",
       "services": "text",
-      "onboarding": "text"
+      "onboarding": "text",
+      "publisher_account_id": "text"
     },
     "projects": {
       "title": "text",
@@ -35,7 +37,8 @@
       "client_id": "ref:clients?",
       "due": "date",
       "status": "enum:Planned,In progress,Review,Done",
-      "notes": "text"
+      "notes": "text",
+      "assignee_id": "ref:people?"
     },
     "content": {
       "title": "text",
@@ -52,7 +55,13 @@
       "asset_url": "url",
       "owner": "text",
       "article_id": "ref:articles?",
-      "production_id": "ref:productions?"
+      "production_id": "ref:productions?",
+      "assignee_id": "ref:people?",
+      "publisher_post_id": "text",
+      "publisher_state": "text",
+      "publisher_error": "text",
+      "publisher_media": "text",
+      "publisher_account_ids": "text"
     },
     "leads": {
       "name": "text",
@@ -149,7 +158,10 @@
       "recurrence": "enum:None,Daily,Weekly,Monthly",
       "completed_at": "text",
       "production_id": "ref:productions?",
-      "repeat_of": "text"
+      "repeat_of": "text",
+      "assignee_id": "ref:people?",
+      "business_link_id": "ref:business_links?",
+      "progress_note": "text"
     },
     "recipes": {
       "title": "text",
@@ -275,7 +287,8 @@
       "kind": "enum:Product update,Maintenance,SEO,Content,Bug,Other",
       "status": "enum:Planned,In progress,Review,Done",
       "due": "date",
-      "notes": "text"
+      "notes": "text",
+      "assignee_id": "ref:people?"
     },
     "lead_activities": {
       "title": "text",
@@ -311,7 +324,8 @@
       "review_url": "url",
       "final_url": "url",
       "due": "date",
-      "notes": "text"
+      "notes": "text",
+      "assignee_id": "ref:people?"
     },
     "articles": {
       "title": "text",
@@ -361,6 +375,31 @@
       "status": "enum:Inquiry,Contacted,Requested,Confirmed,Cancelled",
       "date": "date",
       "next_date": "date",
+      "notes": "text"
+    },
+    "people": {
+      "name": "text",
+      "email": "text",
+      "phone": "text",
+      "status": "enum:Active,Paused",
+      "profile_url": "url",
+      "notes": "text"
+    },
+    "business_people": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "person_id": "ref:people",
+      "role": "text",
+      "status": "enum:Active,Paused",
+      "notes": "text"
+    },
+    "business_links": {
+      "title": "text",
+      "business_id": "ref:businesses",
+      "client_id": "ref:clients?",
+      "person_id": "ref:people?",
+      "kind": "enum:Website,Social profile,Assets,Admin,Partner,Other",
+      "url": "url",
       "notes": "text"
     }
   },
@@ -526,6 +565,21 @@
       "quantity",
       "status",
       "date"
+    ],
+    "people": [
+      "name",
+      "status"
+    ],
+    "business_people": [
+      "business_id",
+      "person_id",
+      "role",
+      "status"
+    ],
+    "business_links": [
+      "title",
+      "business_id",
+      "url"
     ]
   },
   "transitions": {

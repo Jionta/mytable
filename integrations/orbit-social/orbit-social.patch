@@ -1,0 +1,181 @@
+--- a/src/worker/index.ts
++++ b/src/worker/index.ts
+@@ -1,3 +1,4 @@
++import { growBridge } from './grow-bridge';
+ import { Hono } from 'hono';
+ import { ensurePersonalWorkspace, getDashboard } from './db';
+ import { createAuthApp } from './auth';
+@@ -26,7 +27,7 @@
+ app.all('*', (c) => c.req.path.startsWith('/api/') || c.req.path.startsWith('/oauth/') ? c.json({ error: 'Not found.' }, 404) : c.env.ASSETS.fetch(c.req.raw));
+ 
+ export default {
+-  fetch(request, env, ctx) { return app.fetch(request, env, ctx); },
++  fetch(request, env, ctx) { return new URL(request.url).pathname.startsWith('/internal/grow/') ? growBridge(request,env) : app.fetch(request, env, ctx); },
+   async scheduled(_event, env) { await maintainPublishing(env); },
+   async queue(batch, env) {
+     for (const message of batch.messages) {
+--- a/src/worker/posts.ts
++++ b/src/worker/posts.ts
+@@ -7,7 +7,7 @@
+ import { requestPublishing } from './publishing';
+ 
+ export const timezoneSchema = z.string().max(100).refine((value) => { try { new Intl.DateTimeFormat('en', { timeZone: value }); return true; } catch { return false; } }, 'Choose a valid timezone.');
+-const schema = z.object({
++export const schema = z.object({
+   title: z.string().trim().max(120).optional(), content: z.string().trim().max(5000),
+   platforms: z.array(z.enum(platforms)).min(1).max(7).refine((v) => new Set(v).size === v.length, 'Choose each network once.'),
+   variants: z.array(z.object({ platform: z.enum(platforms), content: z.string().trim().max(5000), title: z.string().trim().max(120).optional() })).max(7).default([]),
+@@ -24,8 +24,8 @@
+ const mutable = "state IN ('draft', 'scheduled', 'failed', 'cancelled', 'partial_failure') AND NOT EXISTS (SELECT 1 FROM post_targets t WHERE t.post_id = posts.id AND t.state IN ('published', 'publishing', 'queued')) AND NOT EXISTS (SELECT 1 FROM publish_jobs j WHERE j.post_id = posts.id AND (j.state = 'unknown' OR j.external_id IS NOT NULL))";
+ const revisionSchema = z.object({ revision: z.number().int().nonnegative() });
+ 
+-async function savePost(db: D1Database, payload: Payload, workspaceId: string, userId: string, id?: string) {
+-  const timestamp = new Date().toISOString(), token = crypto.randomUUID(), postId = id ?? crypto.randomUUID();
++export async function savePost(db: D1Database, payload: Payload, workspaceId: string, userId: string, id?: string, createId?: string) {
++  const timestamp = new Date().toISOString(), token = crypto.randomUUID(), postId = id ?? createId ?? crypto.randomUUID();
+   const state = payload.scheduledFor ? 'scheduled' : 'draft';
+   const available = await db.prepare(`SELECT id FROM social_accounts WHERE workspace_id = ? AND external_account_id IS NOT NULL AND platform IN (${payload.platforms.map(() => '?').join(',')})`).bind(workspaceId, ...payload.platforms).all<{ id: string }>();
+   const accountIds = payload.accountIds ?? [];
+@@ -36,7 +36,7 @@
+   }
+   const statements = [id
+     ? db.prepare(`UPDATE posts SET title = ?, base_content = ?, state = ?, scheduled_for = ?, timezone = ?, updated_at = ?, revision = revision + 1, change_token = ?, target_accounts_json = ? WHERE id = ? AND workspace_id = ? AND deleted_at IS NULL AND revision = ? AND ${mutable}`).bind(payload.title || null, payload.content, state, payload.scheduledFor ? new Date(payload.scheduledFor).toISOString() : null, payload.timezone, timestamp, token, JSON.stringify(accountIds), postId, workspaceId, payload.revision ?? -1)
+-    : db.prepare('INSERT INTO posts(id, workspace_id, author_id, title, base_content, state, scheduled_for, timezone, created_at, updated_at, change_token, target_accounts_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(postId, workspaceId, userId, payload.title || null, payload.content, state, payload.scheduledFor ? new Date(payload.scheduledFor).toISOString() : null, payload.timezone, timestamp, timestamp, token, JSON.stringify(accountIds)),
++    : db.prepare('INSERT OR IGNORE INTO posts(id, workspace_id, author_id, title, base_content, state, scheduled_for, timezone, created_at, updated_at, change_token, target_accounts_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').bind(postId, workspaceId, userId, payload.title || null, payload.content, state, payload.scheduledFor ? new Date(payload.scheduledFor).toISOString() : null, payload.timezone, timestamp, timestamp, token, JSON.stringify(accountIds)),
+   ];
+   // A unique mutation token guards EVERY statement in the atomic batch. A stale revision
+   // cannot replace variants or attachments belonging to a concurrent successful edit.
+@@ -54,6 +54,10 @@
+   }
+   for (const [index, mediaId] of payload.mediaIds.entries()) statements.push(db.prepare(`INSERT INTO post_media(post_id, media_id, sort_order) SELECT ?, ?, ? WHERE ${guarded}`).bind(postId, mediaId, index, postId, token));
+   const results = await db.batch(statements);
++  if (!results[0].meta.changes && createId && !id) {
++    const existing = await db.prepare('SELECT id,state,revision,deleted_at FROM posts WHERE id=? AND workspace_id=?').bind(postId,workspaceId).first<{id:string;state:string;revision:number;deleted_at:string|null}>();
++    if(existing&&!existing.deleted_at)return {id:existing.id,state:existing.state,revision:existing.revision};
++  }
+   if (!results[0].meta.changes) return { error: 'This post changed in another tab or cannot be edited. Reload it before saving.', status: 409 as const };
+   return { id: postId, state, revision: id ? (payload.revision ?? 0) + 1 : 0 };
+ }
+--- a/src/worker/auth.ts
++++ b/src/worker/auth.ts
+@@ -37,10 +37,10 @@
+   }
+ }
+ 
+-function loginPage(error = "") {
++function loginPage(error = "", post = "") {
+   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Sign in · Orbit Social</title><style>
+   *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 0,#33244d,transparent 65%),#13141a;color:#e8e8ed;font-family:system-ui,sans-serif}main{width:100%;max-width:420px;background:#1c1d25;border:1px solid #38313f;border-radius:20px;padding:35px;box-shadow:0 24px 80px #0005}.brand{color:#b299ff;font-size:25px;font-weight:700;letter-spacing:-1px;margin-bottom:34px}h1{font:600 30px Georgia,serif;margin:0 0 12px}p{color:#9b9ba8;font-size:14px;line-height:1.6;margin:0 0 25px}label{display:block;font-size:12px;color:#c2bfcc;margin:17px 0 8px}input{width:100%;border-radius:9px;border:1px solid #45404f;background:#252630;color:#f4f2fa;padding:12px;font:inherit;outline:none}input:focus{border-color:#a68bf5}button{width:100%;margin-top:24px;padding:13px;border:0;border-radius:9px;background:#9472f1;color:white;font:600 14px system-ui;cursor:pointer}.error{background:#57352f66;color:#ffc4b7;border:1px solid #744b43;border-radius:8px;padding:10px;font-size:12px}.foot{margin:23px 0 0;font-size:11px;color:#777584;text-align:center}
+-  </style></head><body><main><div class="brand">◌ orbit</div><h1>Your space to create.</h1><p>Sign in to your private social workspace.</p>${error ? `<div class="error" role="alert">${error}</div>` : ""}<form method="post" action="/auth/login"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="username" required><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required><button type="submit">Sign in →</button></form><p class="foot">Private workspace · Orbit Social</p></main></body></html>`;
++  </style></head><body><main><div class="brand">◌ orbit</div><h1>Your space to create.</h1><p>Sign in to your private social workspace.</p>${error ? `<div class="error" role="alert">${error}</div>` : ""}<form method="post" action="/auth/login${/^grow_[a-f0-9]{64}$/.test(post)?'?post='+post:''}"><label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="username" required><label for="password">Password</label><input id="password" name="password" type="password" autocomplete="current-password" maxlength="256" required><button type="submit">Sign in →</button></form><p class="foot">Private workspace · Orbit Social</p></main></body></html>`;
+ }
+ 
+ export function createAuthApp() {
+@@ -60,26 +60,26 @@
+   });
+   auth.get("/login", async (c) => {
+     if (await validSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET)) return c.redirect("/");
+-    return c.html(loginPage());
++    return c.html(loginPage('',c.req.query('post')));
+   });
+   auth.post("/auth/login", bodyLimit({ maxSize: 4096 }), async (c) => {
+     if (Number(c.req.header("content-length") ?? 0) > 4096) return c.text("Request too large.", 413);
+     const { success } = await c.env.LOGIN_LIMITER.limit({ key: c.req.header("cf-connecting-ip") ?? "local" });
+-    if (!success) return c.html(loginPage("Too many sign-in attempts. Wait a minute and try again."), 429);
++    if (!success) return c.html(loginPage("Too many sign-in attempts. Wait a minute and try again.",c.req.query('post')), 429);
+     const form = await c.req.parseBody();
+     const email = typeof form.email === "string" ? form.email.trim().toLowerCase() : "";
+     const password = typeof form.password === "string" ? form.password : "";
+-    if (email.length > 254 || password.length > 256) return c.html(loginPage("The email or password is incorrect."), 401);
++    if (email.length > 254 || password.length > 256) return c.html(loginPage("The email or password is incorrect.",c.req.query('post')), 401);
+     const digest = await crypto.subtle.digest("SHA-256", encoder.encode(password));
+     const providedHash = Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+     const key = await sessionKey(c.env.SESSION_SECRET);
+     const validPassword = await equalSecret(providedHash, c.env.OWNER_PASSWORD_SHA256, key);
+-    if (email !== c.env.OWNER_EMAIL.toLowerCase() || !validPassword) return c.html(loginPage("The email or password is incorrect."), 401);
++    if (email !== c.env.OWNER_EMAIL.toLowerCase() || !validPassword) return c.html(loginPage("The email or password is incorrect.",c.req.query('post')), 401);
+     const expires = Math.floor(Date.now() / 1000) + SESSION_SECONDS;
+     const message = `${expires}.${crypto.randomUUID()}`;
+     const signature = base64url(await crypto.subtle.sign("HMAC", key, encoder.encode(message)));
+     setCookie(c, SESSION_COOKIE, `${message}.${signature}`, { httpOnly: true, secure: new URL(c.req.url).protocol === "https:", sameSite: "Strict", path: "/", maxAge: SESSION_SECONDS });
+-    return c.redirect("/", 303);
++    const imported=c.req.query('post');return c.redirect(imported&&/^grow_[a-f0-9]{64}$/.test(imported)?'/?growPost='+imported:'/',303);
+   });
+   auth.post("/auth/logout", (c) => {
+     deleteCookie(c, SESSION_COOKIE, { path: "/", secure: new URL(c.req.url).protocol === "https:" });
+@@ -97,7 +97,7 @@
+     }
+     if (!await validSession(getCookie(c, SESSION_COOKIE), c.env.SESSION_SECRET)) {
+       if (c.req.path.startsWith("/api/")) return c.json({ error: "Please sign in." }, 401);
+-      return c.redirect("/login", 303);
++      const imported=c.req.query('growPost');return c.redirect(imported&&/^grow_[a-f0-9]{64}$/.test(imported)?'/login?post='+imported:'/login',303);
+     }
+     await next();
+   });
+--- a/src/client/main.tsx
++++ b/src/client/main.tsx
+@@ -20,7 +20,7 @@
+   const [actionError, setActionError] = useState('');
+   const [publishPreview, setPublishPreview] = useState<Post | null>(null);
+   async function refresh() { setDashboard(await api<Dashboard>('/api/dashboard')); setError(''); setVersion((v) => v + 1); }
+-  useEffect(() => { void refresh().catch((e) => setError(message(e))); const pop = () => setView(currentView()); window.addEventListener('popstate', pop); const query = new URLSearchParams(location.search); if (query.has('connection')) { setNotice(query.get('message')?.slice(0, 1000) || 'Connection completed.'); history.replaceState(null, '', '/?view=accounts'); } return () => window.removeEventListener('popstate', pop); }, []);
++  useEffect(() => { const imported=new URLSearchParams(location.search).get('growPost'); if(imported && /^grow_[a-f0-9]{64}$/.test(imported))void api<Post>('/api/posts/'+imported).then(post=>{setComposer({post});setNotice('Content sent from GROW. Review your destinations before publishing.');history.replaceState(null,'','/?view=drafts');setView('Drafts');}).catch(e=>setNotice(message(e))); void refresh().catch((e) => setError(message(e))); const pop = () => setView(currentView()); window.addEventListener('popstate', pop); const query = new URLSearchParams(location.search); if (query.has('connection')) { setNotice(query.get('message')?.slice(0, 1000) || 'Connection completed.'); history.replaceState(null, '', '/?view=accounts'); } return () => window.removeEventListener('popstate', pop); }, []);
+   function navigate(next: View) { setView(next); history.pushState(null, '', next === 'Overview' ? '/' : `/?view=${next.toLowerCase()}`); }
+   async function changed() { try { await refresh(); } catch (e) { setNotice(`Saved, but the overview could not refresh: ${message(e)}`); setVersion((v) => v + 1); } }
+   async function act(post: Post, action: 'duplicate' | 'trash' | 'restore' | 'unschedule', confirmed = false) {
+--- /dev/null
++++ b/src/worker/grow-bridge.ts
+@@ -0,0 +1,53 @@
++import { schema, savePost, createPostsApp } from './posts';
++import { createMediaApp } from './media';
++import { ensurePersonalWorkspace, hydratePosts, postColumns, type PostRow } from './db';
++import { requestPublishing } from './publishing';
++const encoder=new TextEncoder();
++const digest=async(value:string)=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',encoder.encode(value)))).map(b=>b.toString(16).padStart(2,'0')).join('');
++const json=(payload:unknown,status=200)=>Response.json(payload,{status,headers:{'Cache-Control':'no-store'}});
++const stable=(value:string[])=>[...value].sort().join('\0');
++async function bridgeJSON(request:Request):Promise<Record<string,unknown>>{
++ if(!request.headers.get('Content-Type')?.startsWith('application/json'))throw new TypeError('Send JSON.');
++ if(Number(request.headers.get('Content-Length'))>100000)throw new RangeError('Request too large.');
++ const reader=request.body?.getReader();if(!reader)throw new TypeError('Send JSON.');let size=0,text='',decoder=new TextDecoder();
++ for(;;){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>100000){await reader.cancel();throw new RangeError('Request too large.');}text+=decoder.decode(value,{stream:true});}text+=decoder.decode();
++ const result:unknown=JSON.parse(text);if(!result||typeof result!=='object'||Array.isArray(result))throw new TypeError('Send a JSON object.');return result as Record<string,unknown>;
++}
++/** Private GROW service binding. No OAuth credentials or owner sessions cross this bridge. */
++export async function growBridge(request:Request,env:Env){
++ try{
++  const url=new URL(request.url),secret=(env as Env & {GROW_SOCIAL_BRIDGE_SECRET?:string}).GROW_SOCIAL_BRIDGE_SECRET;
++  if(url.hostname!=='grow-bridge.internal'||!secret||!request.headers.get('X-Grow-Bridge'))return json({error:'Not found.'},404);
++  const key=await crypto.subtle.importKey('raw',encoder.encode(secret),{name:'HMAC',hash:'SHA-256'},false,['sign','verify']);
++  const signature=await crypto.subtle.sign('HMAC',key,encoder.encode(secret));
++  if(!await crypto.subtle.verify('HMAC',key,signature,encoder.encode(request.headers.get('X-Grow-Bridge')!)))return json({error:'Not found.'},404);
++  const path=url.pathname.slice('/internal/grow'.length),{workspaceId,userId}=await ensurePersonalWorkspace(env.DB);
++  if(path==='/accounts'&&request.method==='GET'){
++   const rows=await env.DB.prepare("SELECT id,platform,label,CASE WHEN connection_status='active' AND token_expires_at IS NOT NULL AND token_expires_at<=? THEN 'expired' ELSE connection_status END AS connectionStatus FROM social_accounts WHERE workspace_id=? AND external_account_id IS NOT NULL ORDER BY platform,label").bind(new Date().toISOString(),workspaceId).all();
++   return json({accounts:rows.results});
++  }
++  if(path==='/uploads'&&request.method==='POST')return createMediaApp().fetch(new Request(new URL('/api/uploads',url),request),env);
++  if(request.method==='POST'&&path==='/drafts'){
++   const input=await bridgeJSON(request),validated=schema.safeParse(input.payload);
++   if(!validated.success||typeof input.sourceKey!=='string'||input.sourceKey.length>250)return json({error:validated.success?'Invalid source.':validated.error.issues[0].message},400);
++   const payload={...validated.data,scheduledFor:null,revision:undefined};
++   const id='grow_'+await digest(input.sourceKey+'\0'+JSON.stringify(payload));
++   const saved=await savePost(env.DB,payload,workspaceId,userId,undefined,id);
++   return 'error'in saved?json({error:saved.error},saved.status):json({...saved,url:'https://social.iamjubayer.com/?growPost='+saved.id});
++  }
++  const match=/^\/posts\/(grow_[a-f0-9]{64})(\/publish)?$/.exec(path);
++  if(match&&((request.method==='GET'&&!match[2])||(request.method==='POST'&&match[2]))){
++   const row=await env.DB.prepare(`SELECT ${postColumns} FROM posts p WHERE p.id=? AND p.workspace_id=? AND p.deleted_at IS NULL`).bind(match[1],workspaceId).first<PostRow>();
++   if(!row)return json({error:'This Social draft is unavailable. Open Social to check its history.'},404);
++   const post=(await hydratePosts(env.DB,[row]))[0];
++   if(!match[2])return json({id:row.id,state:row.state,revision:row.revision,targets:post.targets.map(t=>({label:t.label,platform:t.platform,state:t.state,lastError:t.lastError})),url:'https://social.iamjubayer.com/?growPost='+row.id});
++   const input=schema.safeParse((await bridgeJSON(request)).payload);if(!input.success)return json({error:'An approved content snapshot is required.'},400);
++   const expected=input.data;
++   if(expected.platforms.length!==1||expected.platforms[0]!=='facebook'||!expected.accountIds?.length)return json({error:'Choose Facebook Pages to publish. Other networks are draft-only.'},400);
++   if((row.title||'')!==(expected.title||'')||row.baseContent!==expected.content||stable(post.accountIds)!==stable(expected.accountIds)||post.variants.length!==1||post.variants[0].platform!=='facebook'||post.variants[0].content!==expected.content||post.media.map(m=>m.id).join('\0')!==expected.mediaIds.join('\0'))return json({error:'This draft changed in Social. Review it there before publishing.'},409);
++   const result=await requestPublishing(env,workspaceId,row.id,row.revision);
++   return 'error'in result?json({error:result.error},result.status):json(result,202);
++  }
++  return json({error:'Not found.'},404);
++ }catch(error){if(error instanceof RangeError)return json({error:'Request too large.'},413);if(error instanceof TypeError||error instanceof SyntaxError)return json({error:'Send valid JSON.'},400);console.error(JSON.stringify({event:'grow_bridge_failed',kind:error instanceof Error?error.name:'Error'}));return json({error:'The Social connection could not complete this request.'},500);}
++}

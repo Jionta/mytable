@@ -14,9 +14,10 @@ state.data.settings||={owner:'Jubayer',workspace_name:'GROW'};state.data.activit
 const context=vm.createContext({document,console,window:{addEventListener(){},scrollTo(){}},location:{hash:''},setTimeout,clearTimeout,URL,Blob,Intl,Date});
 vm.runInContext(source,context);
 vm.runInContext(fs.readFileSync('dist/operations.js','utf8').replace(/boot\(\);\s*$/,''),context);
+vm.runInContext(fs.readFileSync('dist/connections.js','utf8').replace(/boot\(\);\s*$/,''),context);
 context.seedState=state;
 vm.runInContext('store=seedState.data; serverToday=seedState.today; csrf=seedState.csrf;',context);
-const pages=['artbit','merch','qfs','video','media','travel','home','today','businesses','clients','projects','tasks','marketing','content','sales','finance','resources','automations','reports','ai','settings'];
+const pages=['connections','artbit','merch','qfs','video','media','travel','home','today','businesses','clients','projects','tasks','marketing','content','sales','finance','resources','automations','reports','ai','settings'];
 for(const scope of ['',...state.data.businesses.map(b=>b.id)]){
  for(const page of pages){
    vm.runInContext(`scope=${JSON.stringify(scope)};page=${JSON.stringify(page)};render();`,context);
