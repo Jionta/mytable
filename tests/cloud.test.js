@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, it, expect, beforeEach } from 'vitest';
 import worker from '../src/index.js';
+import {migrateAccessRoles} from '../src/access.js';
 import {migratePersonalOS} from '../src/operations.js';
 
 const ORIGIN = 'https://os.iamjubayer.com';
@@ -152,7 +153,7 @@ describe('Personal business operations',()=>{
     expect((await request('/api/tasks/'+next.id,'DELETE',{})).status).toBe(200);
     expect((await state()).task_steps.some(s=>s.task_id===next.id)).toBe(false);
     const backup=await(await request('/api/backup')).json();
-    expect(backup.grow_version).toBe(3);
+    expect(backup.grow_version).toBe(4);
     expect((await request('/api/restore','POST',backup)).status).toBe(200);
     expect((await state()).tasks).toEqual(backup.data.tasks);
   });
@@ -286,4 +287,80 @@ it('streams owner file uploads to the private Social service and retains the med
  const headers={Cookie:cookie,Origin:ORIGIN,'X-Grow-Token':csrf,'Content-Type':'image/png','X-File-Size':'7','X-File-Name':'fixture.png'};
  const response=await worker.fetch(new Request(ORIGIN+'/api/content/'+c.id+'/social/upload',{method:'POST',headers,body:'fixture'}),bindings);expect(response.status).toBe(201);expect(called).toBe(1);const record=(await state()).content.find(r=>r.id===c.id);expect(JSON.parse(record.publisher_media)[0].id).toBe('uploaded-fixture');
  headers['X-File-Size']=String(51*1024*1024);expect((await worker.fetch(new Request(ORIGIN+'/api/content/'+c.id+'/social/upload',{method:'POST',headers,body:'fixture'}),bindings)).status).toBe(400);expect(called).toBe(1);
+});
+
+// Real Worker/SQLite checks: a UI role label must never be the authority.
+describe('business admin roles',()=>{
+ async function setup(){
+  await signIn();
+  const response=await request('/api/people-with-access','POST',{person:{name:'Business administrator',email:'admin@example.test',status:'Active',notes:'Private owner agreement'},membership:{business_id:'artbit',role:'Operations manager',access_level:'Business admin',status:'Active'}});
+  expect(response.status).toBe(200);const person=(await response.json()).record;
+  const membership=(await state()).business_people.find(m=>m.person_id===person.id);
+  const ordinary=await create('people',{name:'Business designer',email:'designer@example.test',status:'Active',notes:'Private employment terms'});
+  await create('business_people',{business_id:'artbit',person_id:ordinary.id,role:'Designer',status:'Active'});
+  await create('business_people',{business_id:'qfs',person_id:person.id,role:'Researcher',access_level:'Assigned member',status:'Active'});
+  const privatePerson=await create('people',{name:'Unrelated person',email:'private@example.test',status:'Active'});
+  await create('business_people',{business_id:'qfs',person_id:privatePerson.id,role:'Private scope',status:'Active'});
+  const ownTask=await create('tasks',{title:'Unassigned business task',business_id:'artbit',status:'Open'});
+  const foreignTask=await create('tasks',{title:'QFS private task',business_id:'qfs',status:'Open'});
+  const assigned=await create('tasks',{title:'Admin has limited QFS work',business_id:'qfs',assignee_id:person.id,status:'Open'});
+  const invite=await(await request('/api/people/'+person.id+'/invite','POST',{})).json(),token=invite.url.split('#')[1],ownerCookie=cookie,ownerCsrf=csrf;
+  const info=await(await request('/api/invite-info','POST',{token})).json();expect(info.access.some(m=>m.business_id==='artbit'&&m.access_level==='Business admin')).toBe(true);
+  cookie='';csrf='';expect((await request('/api/activate','POST',{token,password:'business-admin-password'})).status).toBe(200);
+  const login=await request('/api/login','POST',{email:person.email,password:'business-admin-password'});expect(login.status).toBe(200);expect((await login.clone().json()).redirect).toBe('/');cookie=login.headers.get('Set-Cookie').split(';')[0];const snapshot=await(await request('/api/state')).json();csrf=snapshot.csrf;
+  return {person,membership,ordinary,privatePerson,ownTask,foreignTask,assigned,ownerCookie,ownerCsrf,snapshot};
+ }
+ it('returns full business data without owner notes, other businesses or workspace controls',async()=>{
+  const {person,privatePerson,snapshot}=await setup();expect(snapshot.role).toBe('business_admin');expect(snapshot.access.business_ids).toEqual(['artbit']);expect(snapshot.data.businesses.map(b=>b.id)).toEqual(['artbit']);expect(snapshot.data.clients.length).toBeGreaterThan(0);expect(snapshot.data.invoices.length).toBeGreaterThan(0);expect(snapshot.data.people.find(p=>p.id===person.id).notes).toBeUndefined();expect(snapshot.data.people.some(p=>p.id===privatePerson.id)).toBe(false);
+  for(const[entity,rows]of Object.entries(snapshot.data))if(Array.isArray(rows)&&!['businesses','people','activity'].includes(entity))for(const r of rows)expect(r.business_id).toBe('artbit');
+  expect((await request('/')).status).toBe(200);expect((await request('/roles.js')).status).toBe(200);expect((await request('/api/backup')).status).toBe(403);
+  for(const[path,method,data]of [['/api/settings','PATCH',{owner:'intruder'}],['/api/restore','POST',{}],['/api/clear-samples','POST',{}],['/api/businesses','POST',{name:'Unauthorized business'}],['/api/businesses/artbit','DELETE',{}],['/api/businesses/qfs','PATCH',{name:'Intrusion'}],['/api/people','POST',{name:'Account intrusion'}],['/api/business_people','POST',{business_id:'qfs',person_id:person.id,role:'Owner',access_level:'Business admin'}],['/api/people/'+person.id+'/invite','POST',{}]])expect((await request(path,method,data)).status,path).toBe(403);
+ });
+ it('creates, assigns, edits and deletes own business work and rejects foreign records and references',async()=>{
+  const {ordinary,ownTask,foreignTask}=await setup();
+  const task=await create('tasks',{title:'Admin-managed task',business_id:'artbit',assignee_id:ordinary.id,status:'Open',priority:'High',origin:'GROW',recurrence:'None'});
+  expect((await request('/api/tasks/'+ownTask.id,'PATCH',{title:'Admin can edit unassigned work'})).status).toBe(200);
+  const step=await create('task_steps',{task_id:task.id,title:'Admin checklist',completed:false});expect((await request('/api/tasks/'+task.id,'PATCH',{status:'Done'})).status).toBe(400);expect((await request('/api/task_steps/'+step.id,'PATCH',{completed:true})).status).toBe(200);expect((await request('/api/tasks/'+task.id,'PATCH',{status:'Done'})).status).toBe(200);expect((await request('/api/tasks/'+task.id,'DELETE',{})).status).toBe(200);
+  const project=await create('projects',{title:'Business delivery',business_id:'artbit',status:'Planned'});expect((await request('/api/projects/'+project.id,'PATCH',{notes:'Admin updates the brief'})).status).toBe(200);expect((await request('/api/projects/'+project.id,'DELETE',{})).status).toBe(200);expect((await request('/api/businesses/artbit','PATCH',{goal:'Admin-managed business objective'})).status).toBe(200);
+  for(const path of ['/api/tasks/'+foreignTask.id,'/api/tasks/unknown-private-id'])expect((await request(path,'PATCH',{status:'Done'})).status).toBe(403);
+  expect((await request('/api/tasks','POST',{title:'Foreign create',business_id:'qfs',status:'Open'})).status).toBe(403);expect((await request('/api/tasks','POST',{title:'Personal create',status:'Open'})).status).toBe(403);expect((await request('/api/tasks/'+ownTask.id,'PATCH',{business_id:'qfs'})).status).toBe(403);expect((await request('/api/projects','POST',{title:'Cross-client',business_id:'artbit',client_id:'hidden-client-id',status:'Planned'})).status).toBe(403);
+ });
+ it('keeps the second business assigned-only and immediately applies downgrades and paused access',async()=>{
+  const {membership,assigned,foreignTask,ownerCookie,ownerCsrf}=await setup();
+  const work=await(await request('/api/my-work')).json();expect(work.role).toBe('business_admin');expect(work.data.tasks.map(t=>t.id)).toEqual([assigned.id]);expect((await request('/api/tasks/'+assigned.id,'PATCH',{status:'In progress',progress_note:'Researching'})).status).toBe(200);expect((await request('/api/tasks/'+assigned.id,'PATCH',{title:'Privilege escalation'})).status).toBe(403);expect((await request('/api/tasks/'+foreignTask.id,'DELETE',{})).status).toBe(403);
+  const adminCookie=cookie;cookie=ownerCookie;csrf=ownerCsrf;expect((await request('/api/business_people/'+membership.id,'PATCH',{access_level:'Assigned member'})).status).toBe(200);cookie=adminCookie;let snapshot=await(await request('/api/state')).json();csrf=snapshot.csrf;expect(snapshot.role).toBe('collaborator');expect(snapshot.data.invoices).toBeUndefined();expect((await request('/roles.js')).headers.get('Location')).toBe('/work');expect((await request('/api/tasks','POST',{title:'Revoked admin task',business_id:'artbit',status:'Open'})).status).toBe(403);
+  cookie=ownerCookie;csrf=ownerCsrf;expect((await request('/api/business_people/'+membership.id,'PATCH',{access_level:'Business admin',status:'Paused'})).status).toBe(200);cookie=adminCookie;snapshot=await(await request('/api/state')).json();expect(snapshot.role).toBe('collaborator');expect(snapshot.data.businesses.map(b=>b.id)).toEqual(['qfs']);
+ });
+ it('manages client plans and invoice payments only within the administered business',async()=>{
+  const {ownerCookie,ownerCsrf}=await setup();const client=await create('clients',{name:'Admin client',business_id:'artbit',status:'Active',fee:10000});
+  const plan=await create('retainers',{title:'Admin monthly delivery',business_id:'artbit',client_id:client.id,month:'2026-10',status:'Active',graphics:1,reels:0,premium:0,fee:10000});expect((await request('/api/retainers/'+plan.id+'/generate','POST',{})).status).toBe(200);const invoice=(await(await request('/api/retainers/'+plan.id+'/invoice','POST',{})).json()).record;
+  expect((await request('/api/invoices/'+invoice.id+'/payment','POST',{amount:10000,date:'2026-10-07'})).status).toBe(200);expect((await state()).transactions.some(t=>t.invoice_id===invoice.id&&t.amount===10000)).toBe(true);expect((await request('/api/invoices/'+invoice.id,'DELETE',{})).status).toBe(400);
+  const adminCookie=cookie,adminCsrf=csrf;cookie=ownerCookie;csrf=ownerCsrf;const foreignInvoice=await create('invoices',{title:'QFS-only invoice',business_id:'qfs',amount:500,date:'2026-10-07',due:'2026-10-07'});cookie=adminCookie;csrf=adminCsrf;expect((await request('/api/invoices/'+foreignInvoice.id+'/payment','POST',{amount:500,date:'2026-10-07'})).status).toBe(403);
+  expect((await request('/api/import-leads','POST',{leads:[{name:'Unauthorized QFS lead'}]})).status).toBe(403);expect((await request('/api/import-leads','POST',{leads:[{name:'Admin agency lead',business_id:'artbit',stage:'Lead'}]})).status).toBe(200);
+ });
+ it('restricts Social destinations and uploads to the business and retains content approval guards',async()=>{
+  const {ownerCookie,ownerCsrf}=await setup(),adminCookie=cookie,adminCsrf=csrf;cookie=ownerCookie;csrf=ownerCsrf;
+  expect((await request('/api/businesses/artbit','PATCH',{publisher_account_id:'page-artbit'})).status).toBe(200);const foreign=await create('content',{title:'Foreign draft',business_id:'qfs',channel:'Facebook',format:'Post',status:'Draft',copy:'Private'});
+  cookie=adminCookie;csrf=adminCsrf;bindings.SOCIAL={async fetch(){return Response.json({accounts:[{id:'page-artbit',platform:'facebook',label:'Business Page',connectionStatus:'connected'},{id:'page-qfs',platform:'facebook',label:'Private Page',connectionStatus:'connected'}]});}};
+  expect((await(await request('/api/social/accounts')).json()).accounts.map(a=>a.id)).toEqual(['page-artbit']);const content=await create('content',{title:'Admin business post',business_id:'artbit',channel:'Facebook',format:'Post',status:'Draft',copy:'Reviewed post',date:'2026-10-07'});
+  const savedSocial=bindings.SOCIAL;bindings.SOCIAL={async fetch(){return Response.json({id:'admin-upload-fixture',filename:'photo.png',contentType:'image/png',bytes:7}, {status:201});}};
+  const adminUploadHeaders={Cookie:cookie,Origin:ORIGIN,'X-Grow-Token':csrf,'Content-Type':'image/png','X-File-Size':'7'};
+  expect((await worker.fetch(new Request(ORIGIN+'/api/content/'+content.id+'/social/upload',{method:'POST',headers:adminUploadHeaders,body:'fixture'}),bindings)).status).toBe(201);
+  expect(JSON.parse((await state()).content.find(c=>c.id===content.id).publisher_media)[0].id).toBe('admin-upload-fixture');expect((await request('/api/content/'+content.id+'/social/detach','POST',{mediaId:'admin-upload-fixture'})).status).toBe(200);bindings.SOCIAL=savedSocial;
+  expect((await request('/api/content/'+content.id+'/social/draft','POST',{accountIds:['page-artbit']})).status).toBe(400);await request('/api/content/'+content.id,'PATCH',{status:'In review'});await request('/api/content/'+content.id,'PATCH',{status:'Approved'});
+  expect((await request('/api/content/'+content.id+'/social/draft','POST',{accountIds:['page-qfs']})).status).toBe(403);expect((await request('/api/businesses/artbit','PATCH',{publisher_account_id:'page-qfs'})).status).toBe(403);expect((await request('/api/content/'+foreign.id+'/social/draft','POST',{accountIds:[]})).status).toBe(403);expect((await request('/api/content/'+foreign.id+'/social/status','POST',{})).status).toBe(403);
+  const stub=bindings.WORKSPACE.getByName(bindings.WORKSPACE_ID);await runInDurableObject(stub,instance=>{instance.publisherEnv.SOCIAL={async fetch(){return Response.json({id:'grow_'+'b'.repeat(64),state:'draft'});}};});expect((await request('/api/content/'+content.id+'/social/draft','POST',{accountIds:['page-artbit']})).status).toBe(200);expect((await state()).content.find(c=>c.id===content.id).publisher_state).toBe('draft');
+  const uploadHeaders={Cookie:cookie,Origin:ORIGIN,'X-Grow-Token':csrf,'Content-Type':'image/png','X-File-Size':'7'};expect((await worker.fetch(new Request(ORIGIN+'/api/content/'+foreign.id+'/social/upload',{method:'POST',headers:uploadHeaders,body:'fixture'}),bindings)).status).toBe(403);
+ });
+ it('creates a person and role atomically, rejects invalid roles and preserves roles through backups',async()=>{
+  await signIn();const before=await state();const failed=await request('/api/people-with-access','POST',{person:{name:'No orphan account',email:'orphan@example.test',status:'Active'},membership:{business_id:'artbit',role:'Admin',access_level:'Owner',status:'Active'}});expect(failed.status).toBe(400);expect((await state()).people.length).toBe(before.people.length);
+  const result=await request('/api/people-with-access','POST',{person:{name:'Explicit admin',email:'explicit@example.test',status:'Active'},membership:{business_id:'artbit',role:'Manager',access_level:'Business admin',status:'Active'}});expect(result.status).toBe(200);
+  const backup=await(await request('/api/backup')).json();expect(backup.grow_version).toBe(4);expect(backup.data.business_people[0].access_level).toBe('Business admin');const old=structuredClone(backup);old.grow_version=3;delete old.data.business_people[0].access_level;expect((await request('/api/restore','POST',old)).status).toBe(400);const invalid=structuredClone(backup);delete invalid.data.business_people[0].access_level;expect((await request('/api/restore','POST',invalid)).status).toBe(400);expect((await request('/api/restore','POST',backup)).status).toBe(200);expect((await state()).business_people[0].access_level).toBe('Business admin');
+ });
+});
+
+it('migrates old job titles without silently granting administrator privileges',async()=>{
+ await signIn();const person=await create('people',{name:'Legacy manager',status:'Active'});const membership=await create('business_people',{business_id:'artbit',person_id:person.id,role:'Full admin',status:'Active'});
+ const stub=bindings.WORKSPACE.getByName(bindings.WORKSPACE_ID);await runInDurableObject(stub,instance=>{const record=instance.one('business_people',membership.id);delete record.access_level;instance.put('business_people',record);instance.sql.exec("DELETE FROM meta WHERE key='access_roles'");migrateAccessRoles(instance);});
+ expect((await state()).business_people.find(m=>m.id===membership.id).access_level).toBe('Assigned member');expect((await stub.accessContext(person.id)).role).toBe('collaborator');
 });

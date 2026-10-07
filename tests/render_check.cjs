@@ -1,7 +1,7 @@
 /* Browser-independent template checks. No claim of visual/browser QA. */
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 const elements=new Map();
-function element(){return {innerHTML:'',textContent:'',className:'',classList:{remove(){},add(){},toggle(){}},open:false,showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;},querySelector(){return {disabled:false}},scrollIntoView(){},select(){}};}
+function element(){return {innerHTML:'',textContent:'',className:'',classList:{remove(){},add(){},toggle(){}},open:false,showModal(){this.open=true;},close(){this.open=false;},insertAdjacentHTML(position,html){this.innerHTML+=html;},querySelector(){return {disabled:false}},scrollIntoView(){},select(){},remove(){}};}
 const document={querySelector(s){if(!elements.has(s))elements.set(s,element());return elements.get(s);},querySelectorAll(){return [];},addEventListener(){},modelContext:undefined};
 let source=fs.readFileSync('dist/app.js','utf8').replace(/boot\(\);\s*$/,'');
 const state=process.argv[2]?JSON.parse(fs.readFileSync(process.argv[2],'utf8')):{data:JSON.parse(fs.readFileSync('src/seed-template.json','utf8')),today:'2026-10-05',csrf:'test'};
@@ -18,6 +18,7 @@ vm.runInContext(fs.readFileSync('dist/connections.js','utf8').replace(/boot\(\);
 context.seedState=state;
 vm.runInContext('store=seedState.data; serverToday=seedState.today; csrf=seedState.csrf;',context);
 vm.runInContext(fs.readFileSync('dist/interactive.js','utf8').replace(/bootDesk\(\);\s*$/,''),context);
+vm.runInContext(fs.readFileSync('dist/roles.js','utf8').replace(/bootDesk\(\);\s*$/,''),context);
 const pages=['planner','activity','connections','artbit','merch','qfs','video','media','travel','home','today','businesses','clients','projects','tasks','marketing','content','sales','finance','resources','automations','reports','ai','settings'];
 for(const scope of ['',...state.data.businesses.map(b=>b.id)]){
  for(const page of pages){
@@ -41,3 +42,9 @@ vm.runInContext(`scope='artbit';page='content';contentClient='nahar';render();`,
 assert(!elements.get('#app').innerHTML.includes('A motorsport weekend'));
 assert.deepEqual(JSON.parse(vm.runInContext(`JSON.stringify(parseCSV('name,notes\\nBuyer,"a,b"'))`,context)),[{name:'Buyer',notes:'a,b'}]);
 console.log(`PASS: ${pages.length*(state.data.businesses.length+1)} page/workspace renders, all operation tabs and record editors, content escaping and CSV parsing.`);
+
+context.adminFixture=JSON.parse(JSON.stringify(state.data));
+for(const entity of Object.keys(schema.fields)){if(entity==='businesses')context.adminFixture[entity]=context.adminFixture[entity].filter(b=>b.id==='artbit');else if(!['people','business_people'].includes(entity))context.adminFixture[entity]=context.adminFixture[entity].filter(r=>r.business_id==='artbit');}
+context.adminState={role:'business_admin',access:{role:'business_admin',business_ids:['artbit'],person:{id:'admin-preview',name:'Business Admin'}},data:context.adminFixture,csrf:'test',today:state.today,deployment:'cloud'};
+context.fetch=async()=>({ok:true,status:200,json:async()=>context.adminState});
+(async()=>{await vm.runInContext('refresh()',context);assert(!vm.runInContext("NAV.some(([p])=>['settings','reports','qfs','merch'].includes(p))",context));for(const p of JSON.parse(vm.runInContext('JSON.stringify(NAV.map(([p])=>p))',context)))vm.runInContext(`page=${JSON.stringify(p)};scope='';render();`,context);vm.runInContext("openEditor('businesses','artbit');",context);console.log('PASS: scoped business-admin navigation and module renders.');})().catch(e=>{console.error(e);process.exitCode=1;});

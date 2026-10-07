@@ -1,10 +1,11 @@
+import {accessContext,adminSnapshot,authorizeAccess,authorizePublisher,publisherAccountIds,migrateAccessRoles,BUSINESS_ADMIN} from './access.js';
 import {publisherAction,ensureUpload,attachMedia,detachMedia,publisherLocked} from './publisher.js';
 import { DurableObject } from 'cloudflare:workers';
 import schema from './schema.json';
 import seedTemplate from './seed-template.json';
 import { newEntities, migratePersonalOS, validateOperations, deleteOperations, afterSave, operationsMutation, orderTotal, stock } from './operations.js';
 
-import {collaborationEntities,validateCollaboration,memberSnapshot,authorizeMember,migrateCollaboration,activeBusinesses,AccessError} from './collaboration.js';
+import {collaborationEntities,validateCollaboration,memberSnapshot,migrateCollaboration,activeBusinesses,AccessError} from './collaboration.js';
 
 const { fields: FIELDS, required: REQUIRED, transitions: TRANSITIONS } = schema;
 const entities = Object.keys(FIELDS);
@@ -50,7 +51,7 @@ export class GrowWorkspace extends DurableObject {
         this.saveSettings({ task_manager_url: '', owner: 'Jubayer', review_days: 'Sunday and Thursday', workspace_name: 'GROW', currency: 'BDT' });
         this.sql.exec("INSERT INTO meta(key,value) VALUES('version','1')");
       }
-      migratePersonalOS(this);migrateCollaboration(this);
+      migratePersonalOS(this);migrateCollaboration(this);migrateAccessRoles(this);
     });
   }
 
@@ -147,9 +148,10 @@ export class GrowWorkspace extends DurableObject {
     return data;
   }
   restore(payload) {
-    if (!isObject(payload) || ![1,2,3].includes(payload.grow_version) || !isObject(payload.data)) throw new ValidationError('Choose a GROW JSON backup (version 1–3).');
+    if (!isObject(payload) || ![1,2,3,4].includes(payload.grow_version) || !isObject(payload.data)) throw new ValidationError('Choose a GROW JSON backup (version 1–4).');
     if (payload.grow_version===1 && newEntities.some(entity=>this.rows(entity).length)) throw new ValidationError('A version 1 backup cannot replace an expanded workspace. Export a version 2 backup first and restore a complete backup.');
     if(payload.grow_version<3&&collaborationEntities.some(entity=>this.rows(entity).length))throw new ValidationError('An older backup cannot discard your collaborators and assignments. Use a version 3 backup.');
+    if(payload.grow_version<4&&this.rows('business_people').some(m=>m.access_level===BUSINESS_ADMIN))throw new ValidationError('An older backup cannot replace your business admin roles. Export a version 4 backup.');
     const staged = {}, indexes = {};
     let total = 0;
     for (const entity of entities) {
@@ -159,6 +161,7 @@ export class GrowWorkspace extends DurableObject {
       if (total > 10000) throw new ValidationError('Backup exceeds 10,000 records.');
       staged[entity] = []; indexes[entity] = new Map();
       for (const item of items) {
+        if(entity==='business_people'&&payload.grow_version===4&&!['Assigned member','Business admin'].includes(item?.access_level))throw new ValidationError('Backup is missing a valid access role.');
         if (!isObject(item) || typeof item.id !== 'string' || !item.id || item.id.length > 200 || indexes[entity].has(item.id)) throw new ValidationError('Invalid or duplicate record id.');
         const input = entity==='tasks' && !item.origin ? {...item,origin:item.external_id?'Imported':'GROW'} : item;
         const record = this.validate(entity, input, null, true);
@@ -213,7 +216,7 @@ export class GrowWorkspace extends DurableObject {
   }
   mutate(method, path, data, personId='') {
     try {
-      const record = this.ctx.storage.transactionSync(() => this.mutateSync(method, path, personId?authorizeMember(this,personId,method,path,data):data));
+      const record = this.ctx.storage.transactionSync(() => this.mutateSync(method, path, personId?authorizeAccess(this,personId,method,path,data):data));
       return { status: 200, payload: { ok: true, record } };
     } catch (error) {
       if (error instanceof AccessError) return {status:403,payload:{error:error.message}};
@@ -227,6 +230,10 @@ export class GrowWorkspace extends DurableObject {
     const parts = path.split('/').filter(Boolean);
     const operation=operationsMutation(this,method,path,data);
     if(operation!==null)return operation;
+    if (path==='/api/people-with-access'&&method==='POST'){
+      const person=this.validate('people',data.person);this.put('people',person);const membership=this.validate('business_people',{...data.membership,person_id:person.id});
+      this.put('business_people',membership);this.audit('Created person and access','business_people',membership.id,person.name+' · '+membership.access_level);return person;
+    }
     if (path === '/api/restore' && method === 'POST') { this.restore(data); return {}; }
     if (path === '/api/settings' && method === 'PATCH') { this.saveSettings(this.validateSettings(data)); this.audit('Updated', 'settings', ''); return {}; }
     if (path === '/api/clear-samples' && method === 'POST') {
@@ -320,10 +327,13 @@ export class GrowWorkspace extends DurableObject {
     if(session?.person_id&&!activeBusinesses(this,session.person_id).size)return null;return session;
   }
   deleteSession(tokenHash) { this.sql.exec('DELETE FROM sessions WHERE token_hash=?', tokenHash); }
-  publishing(id,action,data={}){return publisherAction(this,id,action,data);}
-  uploadAllowed(id){return ensureUpload(this,id);}
-  addMedia(id,media){return attachMedia(this,id,media);}
-  removeMedia(id,mediaId){return detachMedia(this,id,mediaId);}
+  accessContext(personId=''){return accessContext(this,personId);}
+  accountIds(personId){if(accessContext(this,personId).role!=='business_admin')throw new AccessError('Social is available to business admins only.');return publisherAccountIds(this,personId);}
+  stateFor(personId=''){const access=accessContext(this,personId);return {role:access.role,access,data:access.role==='owner'?this.snapshot():access.role==='business_admin'?adminSnapshot(this,personId):memberSnapshot(this,personId)};}
+  async publishing(id,action,data={},personId=''){authorizePublisher(this,personId,id,action==='draft'?data.accountIds||[]:undefined);const result=await publisherAction(this,id,action,data,()=>authorizePublisher(this,personId,id,action==='draft'?data.accountIds||[]:undefined));authorizePublisher(this,personId,id);return result;}
+  uploadAllowed(id,personId=''){authorizePublisher(this,personId,id);return ensureUpload(this,id);}
+  addMedia(id,media,personId=''){authorizePublisher(this,personId,id);return attachMedia(this,id,media);}
+  removeMedia(id,mediaId,personId=''){authorizePublisher(this,personId,id);return detachMedia(this,id,mediaId);}
   memberState(personId){return memberSnapshot(this,personId);}
   memberCredential(email){
     const person=this.rows('people').find(p=>p.email===email&&p.status==='Active');
@@ -336,7 +346,7 @@ export class GrowWorkspace extends DurableObject {
     if(!invite)throw new ValidationError('This invitation expired or has already been used. Ask the owner for a new link.');
     const person=this.one('people',invite.person_id),ids=activeBusinesses(this,person.id);
     if(!person.email||!ids.size)throw new ValidationError('The owner must give this person an email and active business access first.');
-    return {person_id:person.id,name:person.name,email:person.email,businesses:this.rows('businesses').filter(b=>ids.has(b.id)).map(b=>b.name),expires:invite.expires};
+    return {person_id:person.id,name:person.name,email:person.email,businesses:this.rows('businesses').filter(b=>ids.has(b.id)).map(b=>b.name),access:this.rows('business_people').filter(m=>m.person_id===person.id&&m.status==='Active'&&ids.has(m.business_id)).map(m=>({business_id:m.business_id,business:this.one('businesses',m.business_id).name,access_level:m.access_level||'Assigned member'})),expires:invite.expires};
   }
   createInvite(personId,tokenHash){
     return this.ctx.storage.transactionSync(()=>{

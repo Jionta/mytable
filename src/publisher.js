@@ -21,7 +21,8 @@ export async function socialRequest(env,path,method='GET',data,extraHeaders={}){
 export function ensureUpload(db,id){const content=db.one('content',id);if(!['Idea','Draft','Changes requested'].includes(content.status)||publisherLocked.includes(content.publisher_state))throw new db.ValidationError('Return this content to Draft before changing its attachments.');if(JSON.parse(content.publisher_media||'[]').length>=10)throw new db.ValidationError('A post can have at most 10 attachments.');return content;}
 export function attachMedia(db,id,media){return db.ctx.storage.transactionSync(()=>{const content=ensureUpload(db,id);const files=JSON.parse(content.publisher_media||'[]');files.push({id:media.id,filename:media.filename,contentType:media.contentType,bytes:media.bytes});content.publisher_media=JSON.stringify(files);content.status='Draft';content.updated_at=new Date().toISOString();db.put('content',content);db.audit('Attached media','content',id,media.filename);return content;});}
 export function detachMedia(db,id,mediaId){return db.ctx.storage.transactionSync(()=>{const content=db.one('content',id);if(!['Idea','Draft','Changes requested'].includes(content.status)||publisherLocked.includes(content.publisher_state))throw new db.ValidationError('Return this content to Draft before changing attachments.');content.publisher_media=JSON.stringify(JSON.parse(content.publisher_media||'[]').filter(m=>m.id!==mediaId));content.updated_at=new Date().toISOString();db.put('content',content);return content;});}
-export async function publisherAction(db,id,action,data){
+export async function publisherAction(db,id,action,data,authorize=()=>{}){
+ authorize();
  const initial=db.one('content',id);
  if(action==='status'){
   if(!initial.publisher_post_id)throw new db.ValidationError('Send this content to Social first.');
@@ -31,7 +32,7 @@ export async function publisherAction(db,id,action,data){
  }
  if(!['draft','publish'].includes(action))throw new db.ValidationError('Unknown publishing action.');
  const prepared=db.ctx.storage.transactionSync(()=>{
-  const record=db.one('content',id);
+  authorize();const record=db.one('content',id);
   if(action==='publish'&&record.demo)throw new db.ValidationError('Sample content can be sent as a draft only. Create your own content before publishing.');
   if(!['Approved','Scheduled'].includes(record.status))throw new db.ValidationError('Approve the content before sending it to Social.');
   const expiredSending=record.publisher_state==='sending'&&Date.parse(record.updated_at)<Date.now()-120000;

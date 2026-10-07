@@ -81,7 +81,7 @@ export default {
         if (!credential || typeof data?.password !== 'string' || !data.password || data.password.length > 1024 || !(await verifyPassword(data.password, credential.password_hash))) return json({ error: 'The email or password is incorrect.' }, 401);
         const token = hex(crypto.getRandomValues(new Uint8Array(32)));
         await workspace.createSession(await digest(token + '\0' + env.GROW_PASSWORD_HASH), ipHash, credential.person_id);
-        return json({ ok: true, redirect:credential.person_id?'/work':'/' }, 200, { 'Set-Cookie': `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` });
+        return json({ ok: true, redirect:credential.person_id&&(await workspace.accessContext(credential.person_id)).role==='collaborator'?'/work':'/' }, 200, { 'Set-Cookie': `${COOKIE}=${token}; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=604800` });
       }
       if ((path === '/api/invite-info' || path === '/api/activate') && request.method==='POST') {
         const ipHash=await digest(request.headers.get('CF-Connecting-IP')||'local-test');
@@ -94,7 +94,7 @@ export default {
       }
       if (path==='/join'||path==='/join.html')return secure(await env.ASSETS.fetch(new Request(new URL('/join',url),request)));
       if (path === '/login'  || path === '/login.html') {
-        if (session) return redirect(session.person_id?'/work':'/');
+        if (session) return redirect(session.person_id&&(await workspace.accessContext(session.person_id)).role==='collaborator'?'/work':'/');
         // Static Assets serves .html files at extensionless URLs. Fetch the
         // canonical path to avoid redirecting /login.html back to /login.
         return secure(await env.ASSETS.fetch(new Request(new URL('/login', url), request)));
@@ -106,33 +106,35 @@ export default {
         await workspace.deleteSession(tokenHash);
         return json({ ok: true }, 200, { 'Set-Cookie': `${COOKIE}=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0` });
       }
+      const access=await workspace.accessContext(session.person_id||'');
       if (path.startsWith('/api/')) {
         if (request.method === 'GET') {
-          if(path==='/api/social/accounts'&&!session.person_id)return json(await socialRequest(env,'/accounts'));
-          if (path === '/api/health') return json({ ok: true, version: 3, deployment: 'cloud' });
-          if (path === '/api/state') return json({ data: session.person_id?await workspace.memberState(session.person_id):await workspace.snapshot(), role:session.person_id?'collaborator':'owner', csrf: session.csrf, version: 3, today: today(), deployment: 'cloud' });
-          if (path === '/api/backup' && !session.person_id) return json({ grow_version: 3, exported_at: new Date().toISOString(), data: await workspace.snapshot() }, 200, { 'Content-Disposition': `attachment; filename="grow-backup-${today()}.json"` });
+          if(path==='/api/social/accounts'&&access.role!=='collaborator'){const allowed=session.person_id?new Set(await workspace.accountIds(session.person_id)):null;const response=await socialRequest(env,'/accounts');return json(allowed?{accounts:response.accounts.filter(a=>allowed.has(a.id))}:response);}
+          if (path === '/api/health') return json({ ok: true, version: 4, deployment: 'cloud' });
+          if (path === '/api/state') return json({...await workspace.stateFor(session.person_id||''),csrf:session.csrf,version:4,today:today(),deployment:'cloud'});
+          if(path==='/api/my-work')return json({role:access.role,data:session.person_id?await workspace.memberState(session.person_id):null,csrf:session.csrf,today:today()});
+          if (path === '/api/backup' && !session.person_id) return json({ grow_version: 4, exported_at: new Date().toISOString(), data: await workspace.snapshot() }, 200, { 'Content-Disposition': `attachment; filename="grow-backup-${today()}.json"` });
           return json({ error: 'Endpoint not found or not available to your account.' }, session.person_id?403:404);
         }
         if (!['POST', 'PATCH', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405);
         if (!(await equal(request.headers.get('X-Grow-Token') || '', session.csrf))) return json({ error: 'Refresh GROW before saving.' }, 403);
         const publishingMatch=/^\/api\/content\/([^/]+)\/social\/(upload|draft|publish|status|detach)$/.exec(path);
         if(publishingMatch){
-          if(session.person_id)return json({error:'Publishing is available to the owner only.'},403);
+          if(access.role==='collaborator')return json({error:'Publishing is available to the owner or assigned business admins only.'},403);
           const [,id,action]=publishingMatch;
           if(request.method!=='POST')return json({error:'Method not allowed.'},405);
           if(action==='upload'){
-            await workspace.uploadAllowed(id);
+            await workspace.uploadAllowed(id,session.person_id||'');
             const size=Number(request.headers.get('X-File-Size')),type=request.headers.get('Content-Type');
             if(!Number.isSafeInteger(size)||size<1||size>50*1024*1024)return json({error:'Choose a file up to 50 MB.'},400);
             if(!env.SOCIAL||!env.GROW_SOCIAL_BRIDGE_SECRET)return json({error:'Social is not connected.'},503);
             const headers={'X-Grow-Bridge':env.GROW_SOCIAL_BRIDGE_SECRET,'Content-Type':type||'application/octet-stream','Content-Length':String(size),'X-File-Name':request.headers.get('X-File-Name')||''};
             const response=await env.SOCIAL.fetch('https://grow-bridge.internal/internal/grow/uploads',{method:'POST',headers,body:request.body,signal:AbortSignal.timeout(60000)});
             const media=await response.json();if(!response.ok)return json(media,response.status);
-            return json({record:await workspace.addMedia(id,media)},201);
+            return json({record:await workspace.addMedia(id,media,session.person_id||'')},201);
           }
           const data=await readJSON(request);
-          return json(action==='detach'?{record:await workspace.removeMedia(id,data.mediaId)}:await workspace.publishing(id,action,data));
+          return json(action==='detach'?{record:await workspace.removeMedia(id,data.mediaId,session.person_id||'')}:await workspace.publishing(id,action,data,session.person_id||''));
         }
         let data;
         try { data = await readJSON(request); } catch (error) { return json({ error: error.message }, 400); }
@@ -145,12 +147,13 @@ export default {
         return json(result.payload, result.status);
       }
       if (mutation) return json({ error: 'Method not allowed.' }, 405);
-      if(session.person_id){
+      if(session.person_id&&access.role==='collaborator'){
         if(!['/work','/work.html','/member.js'].includes(path))return redirect('/work');
         return secure(await env.ASSETS.fetch(path==='/work.html'?new Request(new URL('/work',url),request):request));
       }
       return secure(await env.ASSETS.fetch(request));
     } catch (error) {
+      if(error.name==='AccessError')return json({error:error.message},403);
       if(error.name==='ValidationError'||error instanceof ValidationError)return json({error:error.message},400);
       console.error(JSON.stringify({ event: 'request_failed', path, kind: error.name }));
       return json({ error: 'GROW could not complete this request. Please try again.' }, 500);

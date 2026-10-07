@@ -391,7 +391,8 @@
       "person_id": "ref:people",
       "role": "text",
       "status": "enum:Active,Paused",
-      "notes": "text"
+      "notes": "text",
+      "access_level": "enum:Assigned member,Business admin"
     },
     "business_links": {
       "title": "text",
