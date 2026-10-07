@@ -54,8 +54,32 @@ function render(){
  const name=NAV.find(n=>n[0]===page)?.[1]||'Command Center';document.title='GROW · '+name;
  if(page==='artbit')scope='artbit';if(page==='merch')scope='biggan';if(page==='qfs')scope='qfs';if(page==='video')scope='vidzones';if(page==='travel')scope='ghuraghuri';if(page==='media'&&!['cnmotos','alabama','jubayer'].includes(scope))scope='cnmotos';
  const sections={planner:plannerPage,activity:activityPage,connections:connectionsPage,artbit:artbitPage,merch:merchPage,qfs:qfsPage,video:videoPage,media:mediaPage,travel:travelPage,home:homePage,today:todayPage,businesses:businessesPage,clients:clientsPage,projects:projectsPage,tasks:tasksPage,marketing:marketingPage,content:contentPage,sales:salesPage,finance:financePage,resources:resourcesPage,automations:automationsPage,reports:reportsPage,ai:aiPage,settings:settingsPage};
- $('#app').innerHTML=`<div class="shell"><aside class="sidebar" id="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>GROW</strong><small>YOUR BUSINESS OS</small></div></div><nav aria-label="Main navigation">${NAV.map(([id,label],i)=>`${id==='home'?'<div class="nav-label">Workspace</div>':id==='businesses'?'<div class="nav-label">Business workspaces</div>':id==='connections'?'<div class="nav-label">Work & growth</div>':id==='resources'?'<div class="nav-label">Tools & reviews</div>':''}<a href="#${id}" data-action="navigate" data-page="${id}" class="nav-link ${page===id?'active':''}" ${page===id?'aria-current="page"':''}>${icon(id)}<span>${label}</span>${id==='content'&&reviewItems().length?`<span class="count">${reviewItems().length}</span>`:''}</a>`).join('')}</nav><div class="sidebar-bottom"><div class="local-label"><i></i>${cloudMode?'Cloud workspace':'Local workspace'}</div><p>${cloudMode?'Saved securely online':'Saved on this computer'}</p></div></aside><main class="main"><header class="topbar"><button class="mobile-menu" data-action="menu" aria-label="Toggle navigation">${icon('menu')}</button><div class="breadcrumb"><span>Workspace</span><span>/</span><span>${name}</span></div><div class="topbar-right"><button class="search-button" data-action="search">${icon('search')}<span>Search workspace</span><kbd>Ctrl K</kbd></button><select id="scope" aria-label="Business workspace"><option value="">All businesses</option>${store.businesses.map(b=>`<option value="${esc(b.id)}" ${scope===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}</select>${cloudMode?btn('Sign out','logout','','secondary compact'):''}<div class="avatar" title="${esc(store.settings.owner)}">${esc(initials(store.settings.owner||'Jubayer'))}</div></div></header><div class="page">${sampleCount()?`<div class="sample-banner">${icon('info')}<span>Sample records are included. Financial amounts, clients and activity are examples.</span><button data-action="navigate" data-page="settings">Manage samples</button></div>`:''}${sections[page]()}<footer class="summary-footer"><span>GROW / Growth · Revenue · Operations · Workflows</span><span>${cloudMode?'Cloud':'Local'} edition 2.3 · Personal workspace · BDT</span></footer></div></main></div>`;
+ $('#app').innerHTML=`<div class="shell"><aside class="sidebar" id="sidebar"><div class="brand"><div class="brand-mark">G</div><div><strong>GROW</strong><small>YOUR BUSINESS OS</small></div></div><button class="navigation-close" data-action="close-menu" aria-label="Close navigation">${icon('close')}</button><nav aria-label="Main navigation">${NAV.map(([id,label],i)=>`${id==='home'?'<div class="nav-label">Workspace</div>':id==='businesses'?'<div class="nav-label">Business workspaces</div>':id==='connections'?'<div class="nav-label">Work & growth</div>':id==='resources'?'<div class="nav-label">Tools & reviews</div>':''}<a href="#${id}" data-action="navigate" data-page="${id}" class="nav-link ${page===id?'active':''}" ${page===id?'aria-current="page"':''}>${icon(id)}<span>${label}</span>${id==='content'&&reviewItems().length?`<span class="count">${reviewItems().length}</span>`:''}</a>`).join('')}</nav><div class="sidebar-bottom"><div class="local-label"><i></i>${cloudMode?'Cloud workspace':'Local workspace'}</div><p>${cloudMode?'Saved securely online':'Saved on this computer'}</p></div></aside><button class="navigation-backdrop" data-action="close-menu" aria-label="Close navigation overlay" hidden></button><main class="main"><header class="topbar"><button class="mobile-menu" data-action="menu" aria-label="Toggle navigation" aria-controls="sidebar" aria-expanded="false">${icon('menu')}</button><div class="breadcrumb"><span>Workspace</span><span>/</span><span>${name}</span></div><div class="topbar-right"><button class="search-button" data-action="search" aria-label="Search workspace">${icon('search')}<span>Search workspace</span><kbd>Ctrl K</kbd></button><select id="scope" aria-label="Business workspace"><option value="">All businesses</option>${store.businesses.map(b=>`<option value="${esc(b.id)}" ${scope===b.id?'selected':''}>${esc(b.name)}</option>`).join('')}</select>${cloudMode?btn('Sign out','logout','','secondary compact'):''}<div class="avatar" title="${esc(store.settings.owner)}">${esc(initials(store.settings.owner||'Jubayer'))}</div></div></header><div class="page">${sampleCount()?`<div class="sample-banner">${icon('info')}<span>Sample records are included. Financial amounts, clients and activity are examples.</span><button data-action="navigate" data-page="settings">Manage samples</button></div>`:''}${sections[page]()}<footer class="summary-footer"><span>GROW / Growth · Revenue · Operations · Workflows</span><span>${cloudMode?'Cloud':'Local'} edition 2.3 · Personal workspace · BDT</span></footer></div></main></div>`;
+ syncNavigation(false);
+ for(const area of document.querySelectorAll('.board,.planner-grid,.table-wrap,.calendar-wrap'))if(area.scrollWidth>area.clientWidth+1){
+  area.setAttribute('tabindex','0');area.setAttribute('role','region');area.setAttribute('aria-label',(area.classList.contains('planner-grid')?'Weekly planner':area.classList.contains('board')?'Work board':'Data table')+' · scroll horizontally');
+ }
 }
+
+
+// Keep hidden navigation out of the keyboard order on phones and tablets.
+function syncNavigation(open=false,focus=false){
+ if(!window.matchMedia)return;
+ const mobile=window.matchMedia('(max-width: 950px)').matches,sidebar=$('#sidebar'),toggle=$('.mobile-menu'),backdrop=$('.navigation-backdrop'),main=$('.main');
+ if(!sidebar||!toggle)return;
+ open=mobile&&open;sidebar.classList.toggle('open',open);sidebar.inert=mobile&&!open;toggle.setAttribute('aria-expanded',String(open));
+ if(backdrop)backdrop.hidden=!open;if(main)main.inert=open;document.body.classList.toggle('nav-open',open);
+ if(focus)(open?$('.navigation-close'):toggle)?.focus();
+}
+window.matchMedia?.('(max-width: 950px)').addEventListener('change',()=>syncNavigation(false));
+document.addEventListener('keydown',event=>{
+ const sidebar=$('#sidebar');if(!sidebar?.classList.contains('open'))return;
+ if(event.key==='Escape'){event.preventDefault();syncNavigation(false,true);return;}
+ if(event.key==='Tab'){
+  const controls=[...sidebar.querySelectorAll('button,a[href]')].filter(el=>!el.disabled),first=controls[0],last=controls.at(-1);
+  if(event.shiftKey&&document.activeElement===first){event.preventDefault();last?.focus();}else if(!event.shiftKey&&document.activeElement===last){event.preventDefault();first?.focus();}
+ }
+});
 
 function weekTheme(){const day=new Date(today()+'T12:00:00').getDay();return ['CEO planning + I am Jubayer','Vidzones','QFS','CNMOTOS + AlabamaFootball','Biggan PiC / GhuraghuriBD','Day off','Day off'][day];}
 function focusBody(){const day=new Date(today()+'T12:00:00').getDay();if(day>=5)return `<div class="card-body"><p>Your planned day off.</p><p class="muted small">Friday and Saturday are protected. Review exceptions when needed.</p></div>`;
@@ -148,7 +172,8 @@ function promptFrom(form){const data=new FormData(form),b=business(data.get('bus
 document.addEventListener('click',async event=>{const el=event.target.closest('[data-action]');if(!el)return;const a=el.dataset.action;event.preventDefault();if(el.disabled)return;try{
  if(a==='navigate'){if($('#editor').open)$('#editor').close();go(el.dataset.page);}
  else if(a==='logout'){await api('logout','POST',{});location.replace('/login');}
- else if(a==='menu')$('#sidebar').classList.toggle('open');
+ else if(a==='menu')syncNavigation(!$('#sidebar').classList.contains('open'),true);
+ else if(a==='close-menu')syncNavigation(false,true);
  else if(a==='close')$('#editor').close();
  else if(a==='edit')openEditor(el.dataset.entity,el.dataset.id);
  else if(a==='workspace'){scope=el.dataset.id;go('businesses');}
