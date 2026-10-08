@@ -5,7 +5,7 @@ export { GrowWorkspace };
 const encoder = new TextEncoder();
 const MAX_BODY = 4 * 1024 * 1024;
 const COOKIE = '__Host-grow_session';
-const publicAssets = new Set(['/styles.css', '/favicon.svg', '/login.css', '/login.js', '/join.js']);
+const publicAssets = new Set(['/actions.js', '/styles.css', '/favicon.svg', '/login.css', '/login.js', '/join.js']);
 const securityHeaders = {
   'Cache-Control': 'no-store',
   'X-Content-Type-Options': 'nosniff',
