@@ -18,7 +18,9 @@ vm.runInContext(fs.readFileSync('dist/connections.js','utf8').replace(/boot\(\);
 context.seedState=state;
 vm.runInContext('store=seedState.data; serverToday=seedState.today; csrf=seedState.csrf;',context);
 vm.runInContext(fs.readFileSync('dist/interactive.js','utf8').replace(/bootDesk\(\);\s*$/,''),context);
+vm.runInContext(fs.readFileSync('dist/assistant.js','utf8'),context);
 vm.runInContext(fs.readFileSync('dist/roles.js','utf8').replace(/bootDesk\(\);\s*$/,''),context);
+vm.runInContext('cloudMode=true;',context);
 const pages=['planner','activity','connections','artbit','merch','qfs','video','media','travel','home','today','businesses','clients','projects','tasks','marketing','content','sales','finance','resources','automations','reports','ai','settings'];
 for(const scope of ['',...state.data.businesses.map(b=>b.id)]){
  for(const page of pages){
@@ -29,6 +31,9 @@ for(const scope of ['',...state.data.businesses.map(b=>b.id)]){
    assert(!html.includes('NaN'),`${scope}/${page}: invalid number`);
  }
 }
+vm.runInContext(`scope='artbit';page='automations';render();`,context);
+assert(elements.get('#app').innerHTML.includes('Business connections'));
+assert(elements.get('#app').innerHTML.includes('Vidzones'), 'Dashboard index includes all businesses even in a scoped workspace');
 for(const view of ['board','approvals','calendar','list']) vm.runInContext(`scope='';page='content';contentView='${view}';render();`,context);
 for(const view of ['ledger','invoices','business']) vm.runInContext(`scope='';page='finance';financeView='${view}';render();`,context);
 vm.runInContext(`store.content[0].title='<img src=x onerror=alert(1)>'; page='content';contentView='list';render();`,context);

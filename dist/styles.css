@@ -122,3 +122,9 @@ h1,h2,h3,.key-value dd,.brief,.notice,.connection-person p,.member-task summary,
 .desk-shortcuts button[data-action-visual]{border-color:var(--action-border)}
 .desk-shortcuts button[data-action-visual] svg{color:var(--action-ink)}
 .desk-shortcuts button[data-action-visual]:hover{background:var(--action-bg)}
+
+.assistant-sites{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:12px}
+.assistant-site,.assistant-reply{min-width:0;padding:14px;border:1px solid var(--line);border-radius:10px}
+.assistant-site .actions,.assistant-reply .actions{display:flex;gap:8px;margin:10px 0}
+.assistant-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:16px}
+.assistant-reply h3{margin:6px 0}.assistant-reply .brief,[data-assistant-brief] .brief{overflow-wrap:anywhere}

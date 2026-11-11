@@ -2,6 +2,7 @@ import { env } from 'cloudflare:workers';
 import { runInDurableObject } from 'cloudflare:test';
 import { describe, it, expect, beforeEach } from 'vitest';
 import worker from '../src/index.js';
+import {sendDailyBrief} from '../src/assistant.js';
 import {migrateAccessRoles} from '../src/access.js';
 import {migratePersonalOS} from '../src/operations.js';
 
@@ -363,4 +364,86 @@ it('migrates old job titles without silently granting administrator privileges',
  await signIn();const person=await create('people',{name:'Legacy manager',status:'Active'});const membership=await create('business_people',{business_id:'artbit',person_id:person.id,role:'Full admin',status:'Active'});
  const stub=bindings.WORKSPACE.getByName(bindings.WORKSPACE_ID);await runInDurableObject(stub,instance=>{const record=instance.one('business_people',membership.id);delete record.access_level;instance.put('business_people',record);instance.sql.exec("DELETE FROM meta WHERE key='access_roles'");migrateAccessRoles(instance);});
  expect((await state()).business_people.find(m=>m.id===membership.id).access_level).toBe('Assigned member');expect((await stub.accessContext(person.id)).role).toBe('collaborator');
+});
+
+describe('private work assistant and draft bridge', () => {
+  const secret='test_only_telegram_secret_at_least_32';
+  const chat=123456789;
+  function telegram(id,text,{from=chat,type='private',auth=secret}={}){
+    const update={update_id:id,message:{chat:{id:chat,type},from:{id:from},text}};
+    return worker.fetch(new Request(ORIGIN+'/integrations/telegram',{method:'POST',
+      headers:{'Content-Type':'application/json','X-Telegram-Bot-Api-Secret-Token':auth},body:JSON.stringify(update)}),bindings);
+  }
+  function configureTelegram(){
+    Object.assign(bindings,{GROW_TELEGRAM_TOKEN:'not-a-real-token',GROW_TELEGRAM_WEBHOOK_SECRET:secret,GROW_TELEGRAM_OWNER_ID:String(chat)});
+  }
+  it('authenticates both webhook and owner, applies updates once, and preserves checklist rules',async()=>{
+    await signIn();configureTelegram();
+    const title='Verify campaign work from Telegram';
+    expect((await telegram(1,'/task artbit | '+title,{auth:'wrong'})).status).toBe(403);
+    expect(await (await telegram(1,'/task artbit | '+title,{from:2})).json()).toEqual({ok:true});
+    expect(await (await telegram(1,'/task artbit | '+title,{type:'group'})).json()).toEqual({ok:true});
+    const result=await (await telegram(1,'/task artbit | '+title)).json();
+    expect(result).toMatchObject({method:'sendMessage',chat_id:String(chat),protect_content:true});
+    expect(await (await telegram(1,'/task artbit | '+title)).json()).toEqual({ok:true});
+    const matching=(await state()).tasks.filter(t=>t.title===title);
+    expect(matching).toHaveLength(1);
+    const [task]=matching;
+    expect(task.business_id).toBe('artbit');
+    const code=task.id.slice(0,8);
+    expect((await (await telegram(2,'/today')).json()).text).toContain(code);
+    await telegram(3,'/update '+code+' progress | Bengali copy checked');
+    await create('task_steps',{task_id:task.id,business_id:'artbit',title:'Owner review',completed:false});
+    expect((await (await telegram(4,'/update '+code+' done')).json()).text).toContain('Complete the checklist');
+    expect((await state()).tasks.find(t=>t.id===task.id)).toMatchObject({status:'In progress',progress_note:expect.stringContaining('Bengali copy checked')});
+  });
+  it('sends a Dhaka-time daily brief once and falls back if AI fails',async()=>{
+    await signIn();configureTelegram();
+    await create('tasks',{title:'Review supplier timing',status:'Open',notes:'do not transmit task notes'});
+    const stub=bindings.WORKSPACE.getByName(bindings.WORKSPACE_ID);
+    Object.assign(bindings,{GROW_OPENAI_API_KEY:'test-only',GROW_OPENAI_MODEL:'test-model'});
+    let ai=0,sends=0;
+    const fakeFetch=async (url,opts)=>{
+      const body=JSON.parse(opts.body);
+      if(url.startsWith('https://api.openai.com/')){
+        ai++;expect(body.store).toBe(false);expect(body.input).not.toContain('do not transmit task notes');
+        expect(body.input).toContain('Review supplier timing');
+        return new Response('{}',{status:503});
+      }
+      sends++;expect(url).toBe('https://api.telegram.org/botnot-a-real-token/sendMessage');
+      expect(body.chat_id).toBe(String(chat));expect(body.text).toContain('Review supplier timing');
+      expect(body.text).not.toContain('AI অগ্রাধিকার');
+      return Response.json({ok:true});
+    };
+    expect(await sendDailyBrief(bindings,stub,new Date('2026-11-11T02:00:00Z'),fakeFetch)).toBe(false);
+    expect(await sendDailyBrief(bindings,stub,new Date('2026-11-11T03:00:00Z'),fakeFetch)).toBe(true);
+    expect(await sendDailyBrief(bindings,stub,new Date('2026-11-11T03:00:00Z'),fakeFetch)).toBe(false);
+    expect([ai,sends]).toEqual([1,1]);
+    expect((await (await request('/api/assistant')).json()).lastBrief).toEqual({day:'2026-11-11',result:'sent'});
+    expect((await request('/api/assistant/brief','POST',{},{csrf:false})).status).toBe(403);
+  });
+  it('scopes the local bot and creates reviewable, idempotent drafts without publishing',async()=>{
+    const token='test_only_social_token_more_than_32';
+    Object.assign(bindings,{GROW_SOCIAL_BOT_TOKEN:token,GROW_SOCIAL_BOT_BUSINESSES:'artbit'});
+    function bridge(method,data,auth=token){
+      return worker.fetch(new Request(ORIGIN+'/integrations/social-bot',{method,
+        headers:{'Content-Type':'application/json',Authorization:'Bearer '+auth},
+        body:data===undefined?undefined:JSON.stringify(data)}),bindings);
+    }
+    expect((await bridge('GET',undefined,'wrong')).status).toBe(403);
+    expect((await (await bridge('GET')).json()).businesses.map(b=>b.id)).toEqual(['artbit']);
+    const post={business_id:'artbit',external_id:'post-1',kind:'post',channel:'Facebook',title:'Bot post draft',copy:'Draft copy',status:'Published'};
+    expect((await bridge('POST',{...post,business_id:'vidzones'})).status).toBe(400);
+    const draft=await (await bridge('POST',post)).json();
+    expect(draft.duplicate).toBe(false);
+    expect(await (await bridge('POST',post)).json()).toMatchObject({record_id:draft.record_id,duplicate:true});
+    const suggestion=await (await bridge('POST',{...post,kind:'comment_reply',external_id:'comment-1'})).json();
+    expect(suggestion.record_id).toBe('');
+    expect((await request('/api/assistant')).status).toBe(401);
+    await signIn();
+    expect((await state()).content.filter(c=>c.title===post.title)).toEqual([expect.objectContaining({status:'Draft',business_id:'artbit'})]);
+    expect((await (await request('/api/assistant')).json()).replies).toEqual([expect.objectContaining({id:suggestion.id,copy:post.copy})]);
+    expect((await request('/api/assistant/replies/'+suggestion.id,'DELETE')).status).toBe(200);
+    expect((await (await request('/api/assistant')).json()).replies).toEqual([]);
+  });
 });

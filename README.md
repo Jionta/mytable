@@ -129,3 +129,7 @@ When adding a person, choose their business, responsibilities and access role in
 Backups now use `grow_version: 4` and preserve the explicit membership `access_level`. Versions 1–3 remain accepted where earlier migration guards permit them, but an older backup cannot replace existing Business admin roles. Version 4 memberships must contain a valid role. The role migration defaults every existing membership to **Assigned member**; a job title such as “Admin” does not grant permissions. Sessions/passwords are preserved during the upgrade; backup restore still signs members out.
 
 Runtime checks include scoped admin reads/CRUD, unknown and foreign references, task/checklist guards, per-business mixed roles, live downgrade/revocation, monthly client generation, payment integrity, Social destination/upload boundaries, atomic onboarding, role migration and role-preserving restores.
+
+## Work assistant and integrations
+
+Use **Automations → Business connections → Open assistant** for the private Telegram work brief, website dashboard links, and local social-bot drafts. The [work assistant setup guide](docs/work-assistant.md) covers credentials, Telegram commands, and the draft bridge.

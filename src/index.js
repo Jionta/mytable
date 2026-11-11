@@ -1,3 +1,4 @@
+import {aiReady,briefHour,makeBrief,ownerMessage,sendDailyBrief,socialBusinessIds,telegramReady,telegramReply} from './assistant.js';
 import {socialRequest} from './publisher.js';
 import { GrowWorkspace, today, ValidationError } from './workspace.js';
 export { GrowWorkspace };
@@ -26,9 +27,9 @@ async function equal(a, b) {
   const hashes = await Promise.all([a, b].map(value => crypto.subtle.digest('SHA-256', encoder.encode(value))));
   return crypto.subtle.timingSafeEqual(hashes[0], hashes[1]);
 }
-async function readJSON(request) {
+async function readJSON(request, limit = MAX_BODY) {
   const length = Number(request.headers.get('Content-Length') || 0);
-  if (length > MAX_BODY) throw new Error('File is too large (4 MB maximum).');
+  if (length > limit) throw new Error('Request is too large.');
   if (!request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) throw new Error('Send application/json.');
   const reader = request.body?.getReader();
   if (!reader) return {};
@@ -38,7 +39,7 @@ async function readJSON(request) {
     const { value, done } = await reader.read();
     if (done) break;
     size += value.byteLength;
-    if (size > MAX_BODY) { await reader.cancel(); throw new Error('File is too large (4 MB maximum).'); }
+    if (size > limit) { await reader.cancel(); throw new Error('Request is too large.'); }
     chunks.push(value);
   }
   const buffer = new Uint8Array(size);
@@ -60,12 +61,41 @@ async function hashPassword(password) {
   return salt+'$'+hex(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:encoder.encode(salt),iterations:100000},key,256));
 }
 export default {
+  async scheduled(controller, env) {
+    if(!env.GROW_PASSWORD_HASH)return;
+    try {await sendDailyBrief(env,env.WORKSPACE.getByName(env.WORKSPACE_ID),new Date(controller.scheduledTime));}
+    catch (error) {console.error(JSON.stringify({event:'daily_brief_failed',kind:error.name}));}
+  },
   async fetch(request, env) {
     const url = new URL(request.url);
     const path = url.pathname;
     try {
       if (!env.GROW_PASSWORD_HASH) return json({ error: 'Workspace sign-in has not been configured.' }, 503);
       const workspace = env.WORKSPACE.getByName(env.WORKSPACE_ID);
+      // These two integrations authenticate independently; browser endpoints still require Origin and session checks.
+      if(path==='/integrations/telegram') {
+        if(request.method!=='POST')return json({error:'Method not allowed.'},405);
+        if(!telegramReady(env))return json({error:'Telegram is not configured.'},503);
+        if(!(await equal(request.headers.get('X-Telegram-Bot-Api-Secret-Token')||'',env.GROW_TELEGRAM_WEBHOOK_SECRET)))return json({error:'Unauthorized webhook.'},403);
+        let update;
+        try {update=await readJSON(request,24*1024);} catch(error){return json({error:error.message},400);}
+        const owner=env.GROW_TELEGRAM_OWNER_ID, message=ownerMessage(update,owner);
+        if(!message)return json({ok:true});
+        let reply;
+        try {reply=await workspace.acceptAssistantUpdate(update.update_id,message.slice(0,4096));}
+        catch(error){if(error.name!=='ValidationError')throw error;reply='সেভ হয়নি: '+error.message;}
+        return json(reply?telegramReply(owner,reply):{ok:true});
+      }
+      if(path==='/integrations/social-bot') {
+        if(!['GET','POST'].includes(request.method))return json({error:'Method not allowed.'},405);
+        const allowed=socialBusinessIds(env);
+        if((env.GROW_SOCIAL_BOT_TOKEN||'').length<32||!allowed.length)return json({error:'The local bot is not configured.'},503);
+        if(!(await equal(request.headers.get('Authorization')||'','Bearer '+env.GROW_SOCIAL_BOT_TOKEN)))return json({error:'Unauthorized bot.'},403);
+        if(request.method==='GET')return json({businesses:await workspace.socialBotBusinesses(allowed),mode:'draft_only',daily_limit_per_business:12});
+        let draft;
+        try {draft=await readJSON(request,24*1024);} catch(error){return json({error:error.message},400);}
+        return json(await workspace.submitAssistantDraft(allowed,draft),201);
+      }
       const cookie = request.headers.get('Cookie')?.split(';').map(item => item.trim()).find(item => item.startsWith(COOKIE + '='))?.slice(COOKIE.length + 1) || '';
       // Bind sessions to the credential version so a password reset signs everyone out.
       const tokenHash = cookie ? await digest(cookie + '\0' + env.GROW_PASSWORD_HASH) : '';
@@ -110,6 +140,10 @@ export default {
       if (path.startsWith('/api/')) {
         if (request.method === 'GET') {
           if(path==='/api/social/accounts'&&access.role!=='collaborator'){const allowed=session.person_id?new Set(await workspace.accountIds(session.person_id)):null;const response=await socialRequest(env,'/accounts');return json(allowed?{accounts:response.accounts.filter(a=>allowed.has(a.id))}:response);}
+          if (path === '/api/assistant' && !session.person_id) return json({
+            ...await workspace.assistantStatus(),telegram:telegramReady(env),ai:aiReady(env),
+            hour:briefHour(env),bot:(env.GROW_SOCIAL_BOT_TOKEN||'').length>=32?(await workspace.socialBotBusinesses(socialBusinessIds(env))).length:0,
+          });
           if (path === '/api/health') return json({ ok: true, version: 4, deployment: 'cloud' });
           if (path === '/api/state') return json({...await workspace.stateFor(session.person_id||''),csrf:session.csrf,version:4,today:today(),deployment:'cloud'});
           if(path==='/api/my-work')return json({role:access.role,data:session.person_id?await workspace.memberState(session.person_id):null,csrf:session.csrf,today:today()});
@@ -118,6 +152,13 @@ export default {
         }
         if (!['POST', 'PATCH', 'DELETE'].includes(request.method)) return json({ error: 'Method not allowed.' }, 405);
         if (!(await equal(request.headers.get('X-Grow-Token') || '', session.csrf))) return json({ error: 'Refresh GROW before saving.' }, 403);
+        if(path==='/api/assistant/brief'&&request.method==='POST'&&!session.person_id)
+          return json(await makeBrief(env,await workspace.assistantBrief(today())));
+        const dismiss=/^\/api\/assistant\/replies\/([a-f0-9-]{36})$/.exec(path);
+        if(dismiss&&request.method==='DELETE'&&!session.person_id){
+          await workspace.dismissAssistantReply(dismiss[1]);return json({ok:true});
+        }
+        if(path.startsWith('/api/assistant'))return json({error:'The owner manages integrations.'},403);
         const publishingMatch=/^\/api\/content\/([^/]+)\/social\/(upload|draft|publish|status|detach)$/.exec(path);
         if(publishingMatch){
           if(access.role==='collaborator')return json({error:'Publishing is available to the owner or assigned business admins only.'},403);

@@ -1,3 +1,4 @@
+import {briefData,telegramCommand,submitSocialDraft} from './assistant.js';
 import {accessContext,adminSnapshot,authorizeAccess,authorizePublisher,publisherAccountIds,migrateAccessRoles,BUSINESS_ADMIN} from './access.js';
 import {publisherAction,ensureUpload,attachMedia,detachMedia,publisherLocked} from './publisher.js';
 import { DurableObject } from 'cloudflare:workers';
@@ -28,6 +29,15 @@ export class GrowWorkspace extends DurableObject {
         CREATE TABLE IF NOT EXISTS settings(key TEXT PRIMARY KEY,value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS activity(id TEXT PRIMARY KEY,at TEXT NOT NULL,action TEXT NOT NULL,entity TEXT NOT NULL,record_id TEXT NOT NULL,detail TEXT NOT NULL);
         CREATE INDEX IF NOT EXISTS idx_activity_at ON activity(at);
+        CREATE TABLE IF NOT EXISTS assistant_updates(id INTEGER PRIMARY KEY,received INTEGER NOT NULL);
+        CREATE TABLE IF NOT EXISTS assistant_briefs(day TEXT PRIMARY KEY,result TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS assistant_social(
+          id TEXT PRIMARY KEY,business_id TEXT NOT NULL,external_id TEXT NOT NULL,day TEXT NOT NULL,
+          kind TEXT NOT NULL,channel TEXT NOT NULL,title TEXT NOT NULL,copy TEXT NOT NULL,
+          source TEXT NOT NULL,record_id TEXT NOT NULL,state TEXT NOT NULL DEFAULT 'pending',
+          UNIQUE(business_id,external_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_assistant_social_day ON assistant_social(business_id,day);
         CREATE TABLE IF NOT EXISTS member_accounts(person_id TEXT PRIMARY KEY,password_hash TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS member_invites(token_hash TEXT PRIMARY KEY,person_id TEXT NOT NULL,expires INTEGER NOT NULL);
         CREATE TABLE IF NOT EXISTS sessions(token_hash TEXT PRIMARY KEY,csrf TEXT NOT NULL,expires INTEGER NOT NULL);
@@ -53,6 +63,40 @@ export class GrowWorkspace extends DurableObject {
       }
       migratePersonalOS(this);migrateCollaboration(this);migrateAccessRoles(this);
     });
+  }
+
+  acceptAssistantUpdate(id,text) {
+    return this.ctx.storage.transactionSync(() => {
+      const timestamp=Date.now();
+      this.sql.exec('DELETE FROM assistant_updates WHERE received<?',timestamp-7*86400000);
+      if(this.sql.exec('SELECT id FROM assistant_updates WHERE id=?',id).toArray().length)return null;
+      const response=telegramCommand(this,text,today());
+      this.sql.exec('INSERT INTO assistant_updates(id,received) VALUES(?,?)',id,timestamp);
+      return response;
+    });
+  }
+  assistantBrief(day) {return briefData(this,day);}
+  claimAssistantBrief(day) {
+    return this.ctx.storage.transactionSync(() => {
+      if(this.sql.exec('SELECT day FROM assistant_briefs WHERE day=?',day).toArray().length)return null;
+      const data=briefData(this,day);
+      this.sql.exec("INSERT INTO assistant_briefs(day,result) VALUES(?,'delivery unconfirmed')",day);
+      return data;
+    });
+  }
+  finishAssistantBrief(day,result) {this.sql.exec('UPDATE assistant_briefs SET result=? WHERE day=?',result,day);}
+  assistantStatus() {
+    return {
+      lastBrief:this.sql.exec('SELECT day,result FROM assistant_briefs ORDER BY day DESC LIMIT 1').toArray()[0]||null,
+      replies:this.sql.exec("SELECT id,business_id,day,kind,channel,title,copy,source FROM assistant_social WHERE kind!='post' AND state='pending' ORDER BY day DESC,rowid DESC LIMIT 30").toArray(),
+    };
+  }
+  dismissAssistantReply(id) {this.sql.exec("UPDATE assistant_social SET state='dismissed',copy='',source='',title='' WHERE id=? AND kind!='post'",id);}
+  socialBotBusinesses(allowed) {
+    return this.rows('businesses').filter(b=>allowed.includes(b.id)).map(({id,name,website,pillars})=>({id,name,website,pillars}));
+  }
+  submitAssistantDraft(allowed,input) {
+    return this.ctx.storage.transactionSync(()=>submitSocialDraft(this,allowed,input,today()));
   }
 
   rows(entity) {
