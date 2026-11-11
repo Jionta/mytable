@@ -21,7 +21,7 @@ hermes --profile grow-social cron create '0 10 * * *' \
   "$(cat integrations/hermes/pilot-prompt.txt)"
 ```
 
-After successful model authentication and a supervised run, install/start the profile's gateway using the official Hermes gateway instructions, and resume the job using its ID from `hermes --profile grow-social cron list`. The Mac must be awake for this schedule. The schedule is for one draft; it is not an hour of automatic account activity.
+Install/start the one host gateway with `hermes gateway install --start-on-login --start-now --if-missing`. It serves the named profile too; confirm with `hermes --profile grow-social cron status`. After successful model authentication and a supervised run, resume the job using its ID from `hermes --profile grow-social cron list`. The Mac must be awake for this schedule. The schedule is for one draft; it is not an hour of automatic account activity.
 
 The 09:00 Dhaka Telegram brief remains a separate Cloudflare job. Configure that bot using the [GROW work assistant guide](../../docs/work-assistant.md#private-telegram-bot).
 
