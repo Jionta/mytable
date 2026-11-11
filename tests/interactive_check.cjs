@@ -31,6 +31,19 @@ assert.deepEqual(read("(({billed,paid,outstanding,overdue,payments})=>({billed,p
 vm.runInContext("openClientWallet('client-a')",context);
 assert.match(elements.get('#editor').innerHTML,/Payment history · 1/);
 assert.doesNotMatch(elements.get('#editor').innerHTML,/Other business/);
+vm.runInContext(`
+  store.leads.push(
+    {id:'artbit-lead',name:'Studio prospect',business_id:'artbit',stage:'Qualified',phone:'+1 (202) 555-0120'},
+    {id:'qfs-lead',name:'Sourcing prospect',business_id:'qfs',stage:'Lead',phone:'+1 (202) 555-0130'}
+  );
+  clientDirectoryView='leads';scope='';
+`,context);
+assert.deepEqual(read("visibleDirectoryLeads(all('leads'),'555-0130').map(l=>l.id)"),['qfs-lead']);
+assert.deepEqual(read("visibleDirectoryLeads(all('leads'),'','Qualified').map(l=>l.id)"),['artbit-lead']);
+assert.match(vm.runInContext('clientsPage()',context),/Sourcing prospect/);
+vm.runInContext("scope='artbit'",context);
+assert.doesNotMatch(vm.runInContext('clientsPage()',context),/Sourcing prospect/);
+vm.runInContext("clientDirectoryView='clients';scope='artbit'",context);
 vm.runInContext(`selectedTasks.add('t2');selectedTasks.add('t1');tasksPage();`,context);assert.deepEqual(read('[...selectedTasks]'),['t1']);
 elements.get('#quick-business')||document.querySelector('#quick-business');elements.get('#quick-business').value='artbit';vm.runInContext('updateQuickRefs()',context);assert(elements.get('#quick-person').innerHTML.includes('designer'));assert(!elements.get('#quick-person').innerHTML.includes('inactive'));
 elements.get('#quick-business').value='qfs';vm.runInContext('updateQuickRefs()',context);assert(!elements.get('#quick-person').innerHTML.includes('designer'));assert(!elements.get('#quick-person').innerHTML.includes('inactive'));assert(!elements.get('#quick-client').innerHTML.includes('client-a'));

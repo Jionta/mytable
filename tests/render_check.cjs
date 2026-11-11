@@ -31,6 +31,11 @@ for(const scope of ['',...state.data.businesses.map(b=>b.id)]){
    assert(!html.includes('NaN'),`${scope}/${page}: invalid number`);
  }
 }
+vm.runInContext("scope='';page='connections';render()",context);
+assert.match(elements.get('#app').innerHTML,/<h1>People<\/h1>/);
+assert(!elements.get('#app').innerHTML.includes('Add business link'));
+vm.runInContext("page='resources';render()",context);
+assert(elements.get('#app').innerHTML.includes('Add business link'));
 vm.runInContext(`scope='artbit';page='automations';render();`,context);
 assert(elements.get('#app').innerHTML.includes('Business connections'));
 assert(elements.get('#app').innerHTML.includes('Vidzones'), 'Dashboard index includes all businesses even in a scoped workspace');

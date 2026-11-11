@@ -91,7 +91,7 @@ Deployment is currently performed with Wrangler from a signed-in computer. Pushi
 
 ## Collaborators and Social (2.1)
 
-**People & links** stores people, their business memberships and business URLs. Add an active person with an email, link them to a business with a role, then assign a native GROW task. “Assign work as a task” on content, projects, video productions and website work starts a linked task with its brief. Business pages open their scoped people and links list.
+**People** stores people and their business memberships. Saved business URLs are under **Resources → Business links**. Add an active person with an email, link them to a business with a role, then assign a native GROW task. “Assign work as a task” on content, projects, video productions and website work starts a linked task with its brief. Business pages open their scoped people and links list.
 
 The owner creates a private invitation link, valid for 72 hours and one activation, and shares it manually. Members choose a password of at least 12 characters and sign in with their email. The owner leaves email empty when signing in with the workspace password. No invitation email is sent automatically. Assigned members use `/work`; server-side checks expose only their own assigned native tasks in active businesses, relevant checklist steps, client/business names, explicitly linked content briefs and task reference links. They may change task status/progress and their task checklists. Finances, owner settings, other people's work, backups and publishing are unavailable. Pausing a person or membership removes that business's access immediately. Access passwords are stored only as salted PBKDF2 hashes; resetting an invitation revokes that member's existing sessions upon activation.
 
@@ -118,7 +118,7 @@ Interactive checks: `npm run test:ui` covers task interactions, member filters/s
 
 ## Business admin roles · version 2.3
 
-When adding a person, choose their business, responsibilities and access role in the same form. Person and membership are saved together. An existing person's role is changed by editing the business membership in **People & links**. The owner creates and shares the invitation; no email is sent automatically.
+When adding a person, choose their business, responsibilities and access role in the same form. Person and membership are saved together. An existing person's role is changed by editing the business membership in **People**. The owner creates and shares the invitation; no email is sent automatically.
 
 - **Assigned member** sees their assigned native tasks, briefs, reference links and checklists only.
 - **Business admin** opens the full GROW interface for their assigned admin businesses: tasks and assignments, clients, projects, content approvals, business finances, resources, links and the appropriate business workflows. They can edit the business profile and create, edit or delete eligible business records. Stock, paid-ledger, content approval and publishing-history guards still apply.
@@ -140,6 +140,6 @@ The owner can open a live, read-only [Artbit website summary](integrations/websi
 
 ## Client directory and wallet
 
-Use **Clients** to search GROW client records by contact, phone, name or business. Call opens the device's dialer for a saved number. The owner can open the separate Artbit website client directory from here; its records are not merged into GROW.
+Use **Clients** to switch between GROW clients and leads. Both views can search by contact, phone, name or business; the workspace selector scopes both views. Call opens the device's dialer for a saved number. The owner can open the separate Artbit website client directory from here; its records are not merged into GROW.
 
-Each client's **Wallet** shows recorded invoices, payments, balances and payment history. Use **Create invoice** or **Record payment** there to update the existing GROW billing ledger. It does not collect or hold money. Team phone links appear in **People & links**, using the contact visibility of the signed-in account.
+Each client's **Wallet** shows recorded invoices, payments, balances and payment history. Use **Create invoice** or **Record payment** there to update the existing GROW billing ledger. It does not collect or hold money. Team phone links appear in **People**, using the contact visibility of the signed-in account.

@@ -38,6 +38,8 @@
     if (/^(Approve|Confirm published|Done|Completed|Delivered|Verified|Print-ready)\b/i.test(label+' '+status)) return ['success','check'];
     if (/^(Review|Request changes|Revision|Quality check|Blocked)\b/i.test(label+' '+status)||/task-reschedule/.test(action)) return ['review',/Tomorrow|Next week/.test(label)?'clock':'eye'];
     if (el.matches('a[href^="tel:"]')) return ['social','phone'];
+    if (action==='client-directory-view') return ['edit',el.dataset.view==='leads'?'search':'user'];
+    if (action==='client-lead-task') return ['create','calendar'];
     if (action==='client-wallet') return ['transfer','money'];
     if (/payment/.test(action)||/payment|invoice balance/i.test(label)) return ['transfer','money'];
     if (/copy/.test(action)||/^Copy\b/i.test(label)) return ['transfer','copy'];
