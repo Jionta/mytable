@@ -133,3 +133,7 @@ Runtime checks include scoped admin reads/CRUD, unknown and foreign references, 
 ## Work assistant and integrations
 
 Use **Automations → Business connections → Open assistant** for the private Telegram work brief, website dashboard links, and local social-bot drafts. The [work assistant setup guide](docs/work-assistant.md) covers credentials, Telegram commands, and the draft bridge.
+
+## Website data
+
+The owner can open a live, read-only [Artbit website summary](integrations/website-data/README.md) in Artbit operations or Automations. The original records stay in Artbit's website database.

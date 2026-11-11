@@ -48,6 +48,7 @@
     {
       "binding": "SOCIAL",
       "service": "orbit-social"
-    }
+    },
+    { "binding": "ARTBIT_SITE_DATA", "service": "grow-artbit-site-data" }
   ]
 }

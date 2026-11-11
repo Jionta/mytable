@@ -1,3 +1,4 @@
+import {readArtbitWebsite} from './website-data.js';
 import {aiReady,briefHour,makeBrief,ownerMessage,sendDailyBrief,socialBusinessIds,telegramReady,telegramReply} from './assistant.js';
 import {socialRequest} from './publisher.js';
 import { GrowWorkspace, today, ValidationError } from './workspace.js';
@@ -138,6 +139,15 @@ export default {
       }
       const access=await workspace.accessContext(session.person_id||'');
       if (path.startsWith('/api/')) {
+        if(path==='/api/website-data/artbit'){
+          if(session.person_id)return json({error:'Website data is only available to the workspace owner.'},403);
+          if(request.method!=='GET')return json({error:'Method not allowed.'},405);
+          try{return json(await readArtbitWebsite(env));}
+          catch(error){
+            console.error(JSON.stringify({event:'website_data_unavailable',source:'artbit',kind:error.name}));
+            return json({error:'Artbit website data could not be loaded. Try refreshing or open Artbit Admin.'},503);
+          }
+        }
         if (request.method === 'GET') {
           if(path==='/api/social/accounts'&&access.role!=='collaborator'){const allowed=session.person_id?new Set(await workspace.accountIds(session.person_id)):null;const response=await socialRequest(env,'/accounts');return json(allowed?{accounts:response.accounts.filter(a=>allowed.has(a.id))}:response);}
           if (path === '/api/assistant' && !session.person_id) return json({

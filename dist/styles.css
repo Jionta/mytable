@@ -128,3 +128,5 @@ h1,h2,h3,.key-value dd,.brief,.notice,.connection-person p,.member-task summary,
 .assistant-site .actions,.assistant-reply .actions{display:flex;gap:8px;margin:10px 0}
 .assistant-status{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,160px),1fr));gap:16px}
 .assistant-reply h3{margin:6px 0}.assistant-reply .brief,[data-assistant-brief] .brief{overflow-wrap:anywhere}
+
+[data-site-panel] .actions{display:flex;gap:8px}.site-count{font-size:1.65rem;font-weight:650;margin:5px 0 9px;line-height:1.2}

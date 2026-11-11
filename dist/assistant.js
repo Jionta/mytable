@@ -9,6 +9,7 @@ function assistantOverview() {
       return `<section class="assistant-site"><h3>${esc(b.name)}</h3>
         <div class="actions">${b.website?safeLink(b.website,'Visit website','btn secondary compact'):''}
         ${links.map(l=>safeLink(l.url,l.title,'btn secondary compact')).join('')}
+        ${b.id==='artbit'?websiteDataButton():''}
         ${btn('Add dashboard','assistant-add-dashboard',`data-id="${esc(b.id)}"`,'secondary compact')}</div>
         <p class="muted small">${links.length?'Opens separately · uses the site’s own sign-in':'No dashboard link added'}</p></section>`;
     }).join('')}</div></div>`,btn('Open assistant','assistant-open'),'section-gap');
@@ -69,4 +70,49 @@ document.addEventListener('click',async e=>{
     }
   }catch(error){toast(error.message,true);}
   finally{if(el.isConnected)el.disabled=false;}
+});
+
+const artbitAdmin='https://artbit.studio/admin';
+const artbitSiteMetrics=[
+  ['newLeads','New leads','leads'],
+  ['newCourseApplications','New course applications','course-applications'],
+  ['newWeddingOrders','New wedding orders','wedding-orders'],
+  ['newJobApplications','New job applications','applications'],
+  ['clients','Website clients','clients'],
+  ['invoicesWithBalance','Invoices with a balance','invoices'],
+  ['publishedArticles','Published articles','articles'],
+  ['articleDrafts','Article drafts','articles'],
+];
+
+function websiteDataButton() {
+  return cloudMode&&workspaceRole==='owner'?btn('Website data','website-data-open','','secondary compact'):'';
+}
+
+async function loadWebsiteData(panel) {
+  const output=panel.querySelector('[data-site-summary]');
+  const refreshButton=panel.querySelector('[data-action="website-data-refresh"]');
+  refreshButton.disabled=true;
+  output.textContent='Reading the live Artbit website database…';
+  try {
+    const data=await api('website-data/artbit');
+    if(!output.isConnected)return;
+    const checked=new Intl.DateTimeFormat('en-GB',{dateStyle:'medium',timeStyle:'short',timeZone:'Asia/Dhaka'}).format(new Date(data.checkedAt));
+    output.innerHTML=`<p class="notice">Last checked ${esc(checked)} · Dhaka time. These counts come from artbit.studio and are separate from GROW records.</p>
+      <div class="assistant-sites section-gap">${artbitSiteMetrics.map(([key,label,path])=>`<section class="assistant-site">
+        <h3>${esc(label)}</h3><p class="site-count">${esc(new Intl.NumberFormat('en-BD').format(data.counts[key]))}</p>
+        ${safeLink(artbitAdmin+'/'+path,'Open in Artbit','btn secondary compact')}</section>`).join('')}</div>`;
+  }catch(error){if(output.isConnected)output.textContent=error.message;}
+  finally{if(refreshButton.isConnected)refreshButton.disabled=false;}
+}
+
+document.addEventListener('click',async e=>{
+  const el=e.target.closest?.('[data-action="website-data-open"],[data-action="website-data-refresh"]');
+  if(!el||workspaceRole!=='owner'||!cloudMode)return;
+  if(el.dataset.action==='website-data-open')openDialog(`${dialogHead('Artbit Studio · Website data','Read-only view of artbit.studio. Sign in to Artbit to view or manage individual records.')}
+    <div class="dialog-body" data-site-panel><div class="actions">
+      ${btn('Refresh data','website-data-refresh','','secondary compact')}
+      ${safeLink(artbitAdmin,'Open Artbit Admin','btn secondary compact')}</div>
+      <div class="section-gap" data-site-summary aria-live="polite"></div></div>
+    <div class="dialog-actions">${btn('Close','close')}</div>`);
+  await loadWebsiteData($('[data-site-panel]'));
 });

@@ -447,3 +447,46 @@ describe('private work assistant and draft bridge', () => {
     expect((await (await request('/api/assistant')).json()).replies).toEqual([]);
   });
 });
+
+describe('Artbit website data',()=>{
+  const summary={source:'artbit',checkedAt:'2026-11-12T02:00:00.000Z',counts:{
+    newLeads:4,newCourseApplications:1,newWeddingOrders:2,newJobApplications:3,
+    clients:8,invoicesWithBalance:1,publishedArticles:12,articleDrafts:5,
+  }};
+  it('returns only the website summary to the owner and never accepts mutations',async()=>{
+    let reads=0;
+    bindings.ARTBIT_SITE_DATA={fetch:async(url,options)=>{
+      reads++;expect(url).toBe('https://grow-site-data.internal/v1/summary');expect(options.method).toBe('GET');
+      return Response.json({...summary,privateField:'not exposed'});
+    }};
+    expect((await request('/api/website-data/artbit')).status).toBe(401);
+    await signIn();
+    const reply=await request('/api/website-data/artbit');
+    expect(reply.status).toBe(200);
+    expect(reply.headers.get('Cache-Control')).toBe('no-store');
+    expect(await reply.json()).toEqual(summary);
+    expect((await request('/api/website-data/artbit','POST',{})).status).toBe(405);
+    expect(reads).toBe(1);
+  });
+  it('denies even an Artbit business admin before calling the source',async()=>{
+    await signIn();
+    const person=await create('people',{name:'Website admin test',email:'website@example.test',status:'Active'});
+    await create('business_people',{business_id:'artbit',person_id:person.id,role:'Studio manager',access_level:'Business admin',status:'Active'});
+    const inv=await (await request('/api/people/'+person.id+'/invite','POST',{})).json();
+    cookie='';csrf='';
+    expect((await request('/api/activate','POST',{token:inv.url.split('#')[1],password:'website-only-test-password'})).status).toBe(200);
+    const session=await request('/api/login','POST',{email:'website@example.test',password:'website-only-test-password'});
+    expect(session.status).toBe(200);
+    cookie=session.headers.get('Set-Cookie').split(';')[0];
+    expect((await(await request('/api/state')).json()).role).toBe('business_admin');
+    bindings.ARTBIT_SITE_DATA={fetch:async()=>{throw new Error('The source should not be called.');}};
+    expect((await request('/api/website-data/artbit')).status).toBe(403);
+  });
+  it('returns a safe unavailable response if the service returns an incomplete summary',async()=>{
+    await signIn();
+    bindings.ARTBIT_SITE_DATA={fetch:async()=>Response.json({...summary,counts:{newLeads:1}})};
+    const reply=await request('/api/website-data/artbit');
+    expect(reply.status).toBe(503);
+    expect((await reply.json()).error).toContain('Artbit website data could not be loaded');
+  });
+});

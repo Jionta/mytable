@@ -1,0 +1,16 @@
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "grow-artbit-site-data",
+  "main": "./artbit-worker.js",
+  "compatibility_date": "2026-11-12",
+  "account_id": "8e6fd4a644b243698023640eb467b6c2",
+  "workers_dev": false,
+  "preview_urls": false,
+  "routes": [],
+  "observability": { "enabled": true, "traces": { "enabled": true } },
+  "d1_databases": [{
+    "binding": "ARTBIT_DB",
+    "database_name": "artbit-studio-db",
+    "database_id": "f62d265d-e623-4246-bdf1-e8b651a8bd2f"
+  }]
+}
