@@ -2,7 +2,7 @@
   "$schema": "../../node_modules/wrangler/config-schema.json",
   "name": "grow-artbit-site-data",
   "main": "./artbit-worker.js",
-  "compatibility_date": "2026-11-12",
+  "compatibility_date": "2026-11-11",
   "account_id": "8e6fd4a644b243698023640eb467b6c2",
   "workers_dev": false,
   "preview_urls": false,
