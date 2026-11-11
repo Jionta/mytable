@@ -137,3 +137,9 @@ Use **Automations → Business connections → Open assistant** for the private 
 ## Website data
 
 The owner can open a live, read-only [Artbit website summary](integrations/website-data/README.md) in Artbit operations or Automations. The original records stay in Artbit's website database.
+
+## Client directory and wallet
+
+Use **Clients** to search GROW client records by contact, phone, name or business. Call opens the device's dialer for a saved number. The owner can open the separate Artbit website client directory from here; its records are not merged into GROW.
+
+Each client's **Wallet** shows recorded invoices, payments, balances and payment history. Use **Create invoice** or **Record payment** there to update the existing GROW billing ledger. It does not collect or hold money. Team phone links appear in **People & links**, using the contact visibility of the signed-in account.

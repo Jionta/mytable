@@ -2,6 +2,7 @@
 'use strict';
 (() => {
   const paths = {
+    phone:'M22 17v3a2 2 0 0 1-2.2 2A18 18 0 0 1 2 4.2 2 2 0 0 1 4 2h3a2 2 0 0 1 2 1.7l.5 3a2 2 0 0 1-.6 2L7.6 10a14 14 0 0 0 6.4 6.4l1.3-1.3a2 2 0 0 1 2-.6l3 .5a2 2 0 0 1 1.7 2Z',
     plus:'M12 5v14M5 12h14', edit:'m16 3 5 5-12 12-6 1 1-6Z M14 5l5 5',
     save:'M5 3h12l4 4v14H3V3h2Z M7 3v6h10V3 M7 21v-8h10v8',
     check:'m5 12 4 4L19 6', trash:'M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7M14 10v7',
@@ -36,6 +37,8 @@
     if (/publisher-confirm|publisher-publish|open-publisher/.test(action)||/Social|Publish|Send approved/i.test(label)) return ['social','send'];
     if (/^(Approve|Confirm published|Done|Completed|Delivered|Verified|Print-ready)\b/i.test(label+' '+status)) return ['success','check'];
     if (/^(Review|Request changes|Revision|Quality check|Blocked)\b/i.test(label+' '+status)||/task-reschedule/.test(action)) return ['review',/Tomorrow|Next week/.test(label)?'clock':'eye'];
+    if (el.matches('a[href^="tel:"]')) return ['social','phone'];
+    if (action==='client-wallet') return ['transfer','money'];
     if (/payment/.test(action)||/payment|invoice balance/i.test(label)) return ['transfer','money'];
     if (/copy/.test(action)||/^Copy\b/i.test(label)) return ['transfer','copy'];
     if (/export|download/.test(action)||/^Export\b/i.test(label)) return ['transfer','download'];

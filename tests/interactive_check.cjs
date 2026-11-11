@@ -18,6 +18,19 @@ vm.runInContext(`taskPerson='';taskFilter='today';`,context);assert.deepEqual(re
 vm.runInContext(`taskFilter='all';taskQuery='caption';`,context);assert.deepEqual(read('visibleTasks().map(t=>t.id)'),['t1']);
 vm.runInContext(`taskQuery='';scope='artbit';`,context);assert.deepEqual(read('visibleTasks().map(t=>t.id)'),['t1','t4']);
 assert.deepEqual(read('agendaItems().map(a=>a.id)'),['t1','c1','i2','t4']);
+assert.equal(vm.runInContext("dialNumber('+৮৮০ (১৭) ১২৩৪-৫৬৭৮')",context),'+8801712345678');
+assert.equal(vm.runInContext("dialNumber('javascript:alert(123456789)')",context),'');
+vm.runInContext(`
+  store.clients[0].phone='+880 (17) 1234-5678';
+  store.invoices.push({id:'wallet-i',title:'Client invoice',business_id:'artbit',client_id:'client-a',date:'2026-10-01',due:'2026-10-04',amount:10000,paid:3500});
+  store.invoices.push({id:'foreign-i',title:'Other business',business_id:'qfs',client_id:'client-a',date:'2026-10-01',due:'2026-10-04',amount:400000,paid:0});
+  store.transactions.push({id:'wallet-t',title:'Received',kind:'Income',business_id:'artbit',client_id:'client-a',invoice_id:'wallet-i',date:'2026-10-05',amount:3500});
+`,context);
+assert.deepEqual(read("visibleDirectoryClients(all('clients'),'১৭ ১২৩৪').map(c=>c.id)"),['client-a']);
+assert.deepEqual(read("(({billed,paid,outstanding,overdue,payments})=>({billed,paid,outstanding,overdue,payments:payments.length}))(clientBilling(store.clients[0]))"),{billed:10000,paid:3500,outstanding:6500,overdue:6500,payments:1});
+vm.runInContext("openClientWallet('client-a')",context);
+assert.match(elements.get('#editor').innerHTML,/Payment history · 1/);
+assert.doesNotMatch(elements.get('#editor').innerHTML,/Other business/);
 vm.runInContext(`selectedTasks.add('t2');selectedTasks.add('t1');tasksPage();`,context);assert.deepEqual(read('[...selectedTasks]'),['t1']);
 elements.get('#quick-business')||document.querySelector('#quick-business');elements.get('#quick-business').value='artbit';vm.runInContext('updateQuickRefs()',context);assert(elements.get('#quick-person').innerHTML.includes('designer'));assert(!elements.get('#quick-person').innerHTML.includes('inactive'));
 elements.get('#quick-business').value='qfs';vm.runInContext('updateQuickRefs()',context);assert(!elements.get('#quick-person').innerHTML.includes('designer'));assert(!elements.get('#quick-person').innerHTML.includes('inactive'));assert(!elements.get('#quick-client').innerHTML.includes('client-a'));

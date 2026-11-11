@@ -130,3 +130,5 @@ h1,h2,h3,.key-value dd,.brief,.notice,.connection-person p,.member-task summary,
 .assistant-reply h3{margin:6px 0}.assistant-reply .brief,[data-assistant-brief] .brief{overflow-wrap:anywhere}
 
 [data-site-panel] .actions{display:flex;gap:8px}.site-count{font-size:1.65rem;font-weight:650;margin:5px 0 9px;line-height:1.2}
+
+.client-contact,.client-contact p,.wallet-amount{min-width:0;overflow-wrap:anywhere}.wallet-amount{font-weight:650}.connection-person .actions{display:flex;gap:8px;margin-top:10px}
